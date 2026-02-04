@@ -3,12 +3,16 @@ Main Application V2 - New Architecture Test
 Simplified version to test new architecture without legacy complexity
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import sqlite3
 import os
+import uuid
+import asyncio
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from typing import Optional
 
 # Import new architecture modules
 from lessons import Lesson, LessonGenerator, LessonGenerationError
@@ -53,9 +57,12 @@ def init_db():
     conn = sqlite3.connect("data/lessons.db")
     cursor = conn.cursor()
     
+    # Drop and recreate lessons table with correct schema
+    cursor.execute("DROP TABLE IF EXISTS lessons")
+    
     # Create lessons table with new schema
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS lessons (
+        CREATE TABLE lessons (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT,
@@ -167,6 +174,159 @@ async def test_new_architecture():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Test failed: {str(e)}")
 
+# ---------- Essential API Endpoints ----------
+
+class AILessonJobRequest(BaseModel):
+    text: str
+    title: str = ""
+    description: str = ""
+    fileName: str = ""
+    difficulty: str = "beginner"
+    duration: int = 30
+    questionCount: int = 3
+
+class AIJobStatus(BaseModel):
+    id: str
+    userId: int
+    status: str
+    progress: int
+    message: Optional[str] = None
+    lessonId: Optional[int] = None
+
+# In-memory job storage (simplified)
+jobs: dict = {}
+
+@app.post("/api/auth/login")
+async def login(username: str = Form(...), password: str = Form(...)):
+    """Simple login endpoint"""
+    if username == "admin" and password == "password":
+        return {"message": "Login successful", "token": "mock-token", "user": {"id": 1, "username": username}}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.get("/api/lessons")
+async def get_lessons():
+    """Get lessons endpoint"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM lessons ORDER BY created_at DESC")
+    lessons = cursor.fetchall()
+    conn.close()
+    
+    return {"lessons": [dict(lesson) for lesson in lessons]}
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """File upload endpoint"""
+    content = await file.read()
+    text_content = content.decode('utf-8')
+    return {"filename": file.filename, "text": text_content[:500] + "..." if len(text_content) > 500 else text_content}
+
+@app.post("/api/ai/jobs")
+async def start_ai_lesson_job(
+    request: AILessonJobRequest,
+    authorization: str = Header(None)
+):
+    """Start AI lesson generation with new architecture"""
+    # Simple auth check
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+    
+    # Validate input
+    if len(request.text) < 100:
+        raise HTTPException(status_code=400, detail="Text content is too short (minimum 100 characters)")
+    
+    if request.duration not in [5, 30, 60]:
+        raise HTTPException(status_code=400, detail="Duration must be 5, 30, or 60 minutes")
+    
+    # Create job
+    job_id = str(uuid.uuid4())
+    
+    job = {
+        "id": job_id,
+        "userId": 1,
+        "status": "queued",
+        "progress": 0,
+        "message": "Queued for generation",
+        "text": request.text,
+        "title": request.title,
+        "description": request.description,
+        "duration": request.duration,
+        "difficulty": request.difficulty
+    }
+    
+    jobs[job_id] = job
+    
+    # Process in background
+    asyncio.create_task(process_ai_job_async(job_id, request))
+    
+    return {"jobId": job_id}
+
+@app.get("/api/ai/jobs/{job_id}")
+async def get_ai_lesson_job(job_id: str, authorization: str = Header(None)):
+    """Get AI job status"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+    
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    return jobs[job_id]
+
+async def process_ai_job_async(job_id: str, request: AILessonJobRequest):
+    """Process AI job with new architecture"""
+    try:
+        # Update status
+        jobs[job_id]["status"] = "running"
+        jobs[job_id]["progress"] = 25
+        jobs[job_id]["message"] = "Generating lesson content"
+        
+        # Generate lesson using new architecture
+        generator = LessonGenerator(
+            ollama_url=settings.OLLAMA_URL,
+            model=settings.OLLAMA_MODEL
+        )
+        
+        lesson = generator.generate_lesson(
+            content=request.text,
+            title=request.title,
+            description=request.description,
+            duration_minutes=request.duration,
+            difficulty=request.difficulty
+        )
+        
+        # Save lesson to database
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO lessons (title, description, start_node_id, nodes, transitions, metadata, schema_version, user_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            lesson.title,
+            request.description or f"Generated lesson about {lesson.title}",
+            "start",
+            '{"states": ' + lesson.json() + '}',
+            '{}',
+            f'{{"schema_version": "1.0", "engine_version": "fsm-v1", "estimated_duration_minutes": {lesson.estimated_duration_minutes}}}',
+            "1.0",
+            1,
+            "2024-01-01T00:00:00Z",
+            "2024-01-01T00:00:00Z"
+        ))
+        lesson_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        # Update status
+        jobs[job_id]["status"] = "completed"
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["message"] = "Lesson generated successfully"
+        jobs[job_id]["lessonId"] = lesson_id
+        
+    except Exception as e:
+        jobs[job_id]["status"] = "failed"
+        jobs[job_id]["progress"] = 100
+        jobs[job_id]["message"] = f"Generation failed: {str(e)}"
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5001)
+    uvicorn.run(app, host="0.0.0.0", port=5000)
