@@ -1,0 +1,132 @@
+{
+  "$ref": "#/definitions/AuthoredLesson",
+  "definitions": {
+    "AuthoredLesson": {
+      "type": "object",
+      "properties": {
+        "lesson_metadata": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "estimated_duration_minutes": {
+              "type": "number",
+              "enum": [
+                5,
+                30,
+                60
+              ]
+            },
+            "difficulty": {
+              "type": "string",
+              "enum": [
+                "beginner",
+                "intermediate",
+                "advanced"
+              ]
+            }
+          },
+          "required": [
+            "title",
+            "estimated_duration_minutes"
+          ],
+          "additionalProperties": false
+        },
+        "states": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "content"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "text"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "type": {
+                    "type": "string",
+                    "const": "question"
+                  },
+                  "question_format": {
+                    "type": "string",
+                    "const": "mcq"
+                  },
+                  "question": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 3,
+                    "maxItems": 5
+                  },
+                  "correct_answer": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "explanation": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "question_format",
+                  "question",
+                  "options",
+                  "correct_answer",
+                  "explanation"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "required": [
+        "lesson_metadata",
+        "states"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
