@@ -42,7 +42,7 @@ export default function LessonPlayer() {
     try {
       const lessonData = await apiService.getLesson(parseInt(lessonId));
       setLesson(lessonData);
-      const startId = lessonData?.startNodeId || 'start';
+      const startId = lessonData?.start_node_id || 'start';
       setCurrentNodeId(startId);
       setHistory([startId]);
     } catch (error) {

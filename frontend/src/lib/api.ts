@@ -4,12 +4,14 @@ export interface Lesson {
   id: number;
   title: string;
   description: string;
-  startNodeId: string;
+  start_node_id: string;  // Updated to match backend
   nodes: any;
   transitions: any;
   metadata?: any;
-  createdAt: string;
-  updatedAt: string;
+  schema_version?: string;  // Added for new architecture
+  user_id?: number;  // Added for new architecture
+  created_at: string;  // Updated to match backend
+  updated_at: string;  // Updated to match backend
 }
 
 export interface AiJob {
@@ -25,8 +27,8 @@ export interface AiJob {
   difficulty?: string;
   duration?: number;
   questionCount?: number;
-  createdAt?: string;
-  updatedAt?: string;
+  created_at?: string;  // Updated to match backend
+  updated_at?: string;  // Updated to match backend
 }
 
 class ApiService {
@@ -98,7 +100,8 @@ class ApiService {
 
   // Lesson endpoints
   async getLessons(): Promise<Lesson[]> {
-    return this.get<Lesson[]>('/lessons');
+    const response = await this.get<{lessons: Lesson[]}>('/lessons');
+    return response.lessons;
   }
 
   async getLesson(id: number): Promise<Lesson> {
