@@ -20,7 +20,6 @@ export default function LessonCreator() {
   const [content, setContent] = useState('');
   const [duration, setDuration] = useState(30);
   const [difficulty, setDifficulty] = useState('beginner');
-  const [questionCount, setQuestionCount] = useState(3);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
@@ -55,7 +54,6 @@ export default function LessonCreator() {
         fileName: uploadedFileName || undefined,
         difficulty,
         duration,
-        questionCount,
       });
 
       localStorage.setItem('activeAiLessonJobId', job.jobId);
@@ -152,22 +150,6 @@ export default function LessonCreator() {
                     <option value="beginner">Beginner</option>
                     <option value="intermediate">Intermediate</option>
                     <option value="advanced">Advanced</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-black">
-                    Number of Questions
-                  </label>
-                  <select
-                    value={questionCount}
-                    onChange={(e) => setQuestionCount(Number(e.target.value))}
-                    className="w-full mt-1 px-3 py-2 border-2 border-black bg-white text-sm rounded-md focus:outline-none focus:border-accent-amber"
-                  >
-                    <option value={3}>3 questions</option>
-                    <option value={5}>5 questions</option>
-                    <option value={7}>7 questions</option>
-                    <option value={10}>10 questions</option>
                   </select>
                 </div>
               </div>
