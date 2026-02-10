@@ -1,12 +1,14 @@
 """
-Lesson Generator - LLM Authoring Only
-The LLM is a content author, not a system designer.
+Lesson Generation Service - LLM orchestration and persistence
 """
 
 import json
 import requests
 from typing import Dict, Any, Optional
-from .models import Lesson, AuthoredState
+
+from domain.lesson import Lesson
+from domain.validation import validate_lesson_structure
+from models.lesson import LessonDB
 
 
 class LessonGenerationError(Exception):
@@ -16,7 +18,7 @@ class LessonGenerationError(Exception):
 
 class LessonGenerator:
     """
-    Handles LLM-based lesson generation with strict validation.
+    Handles LLM-based lesson generation with validation.
     
     The LLM:
     - generates only authoring states
@@ -24,9 +26,10 @@ class LessonGenerator:
     - never defines branching
     """
     
-    def __init__(self, ollama_url: str, model: str):
+    def __init__(self, ollama_url: str, model: str, db_session):
         self.ollama_url = ollama_url
         self.model = model
+        self.db = db_session
         self.max_retries = 3
     
     def generate_lesson(
@@ -36,9 +39,9 @@ class LessonGenerator:
         description: str = None,
         duration_minutes: int = 30,
         difficulty: str = "beginner"
-    ) -> Lesson:
+    ) -> int:
         """
-        Generate a lesson using LLM with validation and retry logic.
+        Generate a lesson using LLM with validation and persistence.
         
         Args:
             content: Source content for lesson
@@ -48,11 +51,17 @@ class LessonGenerator:
             difficulty: Difficulty level
             
         Returns:
-            Validated Lesson object
+            Lesson ID (database primary key)
             
         Raises:
             LessonGenerationError: If generation fails after retries
         """
+        # Input validation
+        if not content or len(content) < 100:
+            raise ValueError("Text content is too short (minimum 100 characters)")
+        
+        if duration_minutes not in [5, 30, 60]:
+            raise ValueError("Duration must be 5, 30, or 60")
         prompt = self._build_prompt(
             content=content,
             title=title,
@@ -69,7 +78,8 @@ class LessonGenerator:
                 # Parse and validate
                 lesson = self._parse_and_validate(raw_output)
                 
-                return lesson
+                # Persist to database
+                return self._save_lesson(lesson)
                 
             except Exception as e:
                 if attempt == self.max_retries - 1:
@@ -88,7 +98,7 @@ class LessonGenerator:
         duration_minutes: int = 30,
         difficulty: str = "beginner"
     ) -> str:
-        """Build the LLM prompt for lesson generation."""
+        """Build LLM prompt for lesson generation."""
         
         duration_rules = {
             5: {
@@ -109,7 +119,7 @@ class LessonGenerator:
         
         prompt = f"""You are an AI lesson author.
 
-Your task is to generate a lesson as structured JSON that STRICTLY follows the schema below.
+Your task is to generate a lesson as structured JSON that STRICTLY follows schema below.
 
 DO NOT include explanations, markdown, comments, or extra text.
 DO NOT invent new fields.
@@ -148,7 +158,7 @@ STRUCTURE RULES
 - States must be LINEAR.
 - No two question states may appear consecutively.
 - Content and question states should alternate.
-- Each question must test the immediately preceding content.
+- Each question must test immediately preceding content.
 - IDs must be unique (use pattern: c_1, c_2, q_1, q_2, etc).
 - Keep content concise and instructional.
 
@@ -179,7 +189,7 @@ If you are unsure, choose simpler phrasing."""
         return prompt
     
     def _call_llm(self, prompt: str) -> str:
-        """Call the LLM API and return the response."""
+        """Call LLM API and return response."""
         try:
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
@@ -210,7 +220,7 @@ If you are unsure, choose simpler phrasing."""
     def _parse_and_validate(self, raw_output: str) -> Lesson:
         """Parse raw LLM output and validate against schema."""
         try:
-            # Clean the output - remove any markdown code blocks
+            # Clean output - remove any markdown code blocks
             cleaned_output = raw_output.strip()
             if cleaned_output.startswith("```json"):
                 cleaned_output = cleaned_output[7:]
@@ -221,8 +231,9 @@ If you are unsure, choose simpler phrasing."""
             # Parse JSON
             data = json.loads(cleaned_output)
             
-            # Validate against Pydantic model
-            lesson = Lesson.parse_obj(data)
+            # Validate against domain model
+            lesson = Lesson(**data)
+            validate_lesson_structure(lesson)
             
             return lesson
             
@@ -230,61 +241,10 @@ If you are unsure, choose simpler phrasing."""
             raise LessonGenerationError(f"Invalid JSON output: {str(e)}")
         except Exception as e:
             raise LessonGenerationError(f"Validation failed: {str(e)}")
-
-
-# ---------- Duration Templates ----------
-
-DURATION_TEMPLATES = {
-    5: {
-        "min_questions": 1,
-        "max_questions": 2,
-        "min_content": 1,
-        "max_content": 3
-    },
-    30: {
-        "min_questions": 3,
-        "max_questions": 5,
-        "min_content": 3,
-        "max_content": 8
-    },
-    60: {
-        "min_questions": 5,
-        "max_questions": 8,
-        "min_content": 5,
-        "max_content": 14
-    }
-}
-
-
-def validate_duration_constraints(states: list[AuthoredState], duration_minutes: int) -> bool:
-    """
-    Validate that states match duration constraints.
     
-    Args:
-        states: List of lesson states
-        duration_minutes: Target duration
-        
-    Returns:
-        True if valid
-        
-    Raises:
-        ValueError: If constraints are not met
-    """
-    if duration_minutes not in DURATION_TEMPLATES:
-        raise ValueError(f"Invalid duration: {duration_minutes}")
-    
-    template = DURATION_TEMPLATES[duration_minutes]
-    
-    question_count = sum(1 for s in states if s.type == "question")
-    content_count = sum(1 for s in states if s.type == "content")
-    
-    if question_count < template["min_questions"]:
-        raise ValueError(f"Duration {duration_minutes}min requires at least {template['min_questions']} questions")
-    
-    if question_count > template["max_questions"]:
-        raise ValueError(f"Duration {duration_minutes}min allows at most {template['max_questions']} questions")
-    
-    if content_count < template["min_content"]:
-        raise ValueError(f"Duration {duration_minutes}min requires at least {template['min_content']} content blocks")
-    
-    return True
+    def _save_lesson(self, lesson: Lesson) -> int:
+        """Save lesson to database and return ID"""
+        lesson_db = LessonDB.from_domain(lesson)
+        self.db.add(lesson_db)
+        self.db.commit()
+        return lesson_db.id
