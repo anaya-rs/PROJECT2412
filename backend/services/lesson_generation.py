@@ -168,34 +168,30 @@ class LessonGenerator:
         
         prompt = f"""You are generating content for a {duration_minutes}-minute programming lesson.
 
-Generate content for these {template['total_pages']} sections:
+CRITICAL REQUIREMENTS:
+- You MUST generate EXACTLY {template['total_pages']} sections in this EXACT order:
 {structure_str}
 
+- NO SHORTCUTS - each section must be clearly separated
+- NO PARAGRAPHS - write only what's needed for each section
+- NO EXTRA TEXT - only content for the specified sections
+
 For each section:
-- CONTENT: Write 2-3 sentences explaining the concept
-- QUESTION: Write a question + 4 multiple choice options + explanation
-- END_NOTES: Write a 2-3 sentence summary + 3-5 bullet point takeaways
+- CONTENT: Write 2-3 clear sentences explaining the concept
+- QUESTION: Write a clear question + 4 multiple choice options (A, B, C, D) + mark correct answer with 'correct:' + brief explanation with 'explanation:'
+- END_NOTES: Write 2-3 sentence summary + 3-5 bullet point takeaways starting with '- '
 
 Content to teach:
 {content}
 
 Return ONLY this format:
-=== SECTION 1 ===
-[Content for first section]
+1. [Content for first section]
+2. [Question for second section]
+3. [Content for third section]
+4. [Question for fourth section]
+5. [End notes for fifth section]
 
-=== SECTION 2 ===
-[Content for second section]
-
-=== SECTION 3 ===
-[Content for third section]
-
-=== SECTION 4 ===
-[Content for fourth section]
-
-=== SECTION 5 ===
-[Content for fifth section]
-
-No explanations, no extra text."""
+NO ADDITIONAL TEXT OR EXPLANATIONS!"""
         
         return prompt
     
@@ -307,41 +303,69 @@ No explanations, no extra text."""
                     ))
                 elif section_type == "question":
                     from domain.state import QuestionState
-                    # Parse question content (truncate if too long)
-                    prompt_text = section_content.strip()
-                    if len(prompt_text) > 300:
-                        prompt_text = prompt_text[:297] + "..."  # Truncate to fit validation
+                    # Parse question content more intelligently
+                    lines = section_content.strip().split('\n')
+                    prompt_text = lines[0] if lines else "No question provided"
                     
-                    parsed_states.append(QuestionState(
-                        type="question",
-                        id=f"question_{i+1}",
-                        question_format="mcq",
-                        prompt=prompt_text,
-                        options=["Option A", "Option B", "Option C", "Option D"],
-                        correct_answer=0,
-                        explanation="This is the correct answer based on the lesson content."
-                    ))
+                    # Look for MCQ options in remaining lines
+                    options = []
+                    correct_answer = 0
+                    explanation = "No explanation provided"
+                    
+                    for line in lines[1:]:
+                        line = line.strip()
+                        # Handle different option formats
+                        if line.startswith(('A)', 'B)', 'C)', 'D)')):
+                            options.append(line[1:].strip())  # Remove 'A)' prefix
+                        elif line.lower().startswith('correct:'):
+                            correct_answer = len(options)  # Next option index
+                        elif line.lower().startswith('explanation:'):
+                            explanation = line[12:].strip()  # Remove 'explanation:' prefix
+                        elif line.startswith(('A.', 'B.', 'C.', 'D.')):
+                            # Handle lettered options
+                            option_text = line[3:].strip() if len(line) > 3 else line
+                            options.append(option_text)
+                        elif line.startswith(('1.', '2.', '3.', '4.')):
+                            # Handle numbered options
+                            option_text = line[3:].strip() if len(line) > 3 else line
+                            options.append(option_text)
+                        elif line.startswith(('A) ', 'B) ', 'C) ', 'D) ')):
+                            # Handle lettered options with space
+                            option_text = line[3:].strip()
+                            options.append(option_text)
+                        elif line.startswith(('1)', '2)', '3)', '4)')):
+                            # Handle numbered options with parenthesis
+                            option_text = line[2:].strip() if len(line) > 3 else line
+                            options.append(option_text)
+                        elif '|' in line:  # Handle pipe-separated options
+                            option_parts = [opt.strip() for opt in line.split('|')]
+                            options.extend(option_parts)
+                        elif line.strip():  # Any remaining text as potential option
+                            options.append(line)
                 elif section_type == "end_notes":
                     from domain.state import EndNotesState
-                    # Parse end notes content
+                    # Parse end notes content more intelligently
                     lines = section_content.strip().split('\n')
                     summary = lines[0] if lines else "No summary provided"
                     takeaways = []
+                    
                     for line in lines[1:]:
                         line = line.strip()
                         if line.startswith('- '):
                             takeaways.append(line[2:].strip())  # Remove '- ' prefix
-                        elif line.strip():  # Add non-empty lines as takeaways
+                        elif line.startswith(('1.', '2.', '3.', '4.', '5.', '•', '*')):
+                            takeaways.append(line)
+                        elif line.strip() and len(line) > 5:  # Likely a takeaway
                             takeaways.append(line)
                     
-                    # Ensure we have at least one takeaway
+                    # Ensure we have valid takeaways
                     if not takeaways:
                         takeaways = ["No specific takeaways provided"]
                     
                     parsed_states.append(EndNotesState(
                         type="end_notes",
                         id=f"end_notes_{i+1}",
-                        summary=summary,
+                        summary=summary[:900] if summary else "No summary provided",
                         key_takeaways=takeaways[:5] if takeaways else []  # Limit to 5 items
                     ))
             
