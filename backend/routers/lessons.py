@@ -65,6 +65,27 @@ async def get_lesson(
         db.close()
 
 
+@router.delete("/{lesson_id}")
+async def delete_lesson(
+    lesson_id: int, 
+    db=FastAPIDepends(get_current_db),
+    user_id: int = Depends(verify_authorization)
+) -> Dict[str, Any]:
+    """Delete a lesson by ID"""
+    # Auth is handled by dependency
+    try:
+        lesson = db.query(LessonDB).filter(LessonDB.id == lesson_id).first()
+        if not lesson:
+            raise HTTPException(status_code=404, detail="Lesson not found")
+        
+        db.delete(lesson)
+        db.commit()
+        
+        return {"message": "Lesson deleted successfully"}
+    finally:
+        db.close()
+
+
 @router.post("/generate")
 async def generate_lesson(
     request: Dict[str, Any],

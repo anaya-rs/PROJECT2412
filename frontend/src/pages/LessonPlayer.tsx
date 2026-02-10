@@ -17,10 +17,11 @@ export default function LessonPlayer() {
   const navigate = useNavigate();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [sessionState, setSessionState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [showWrongAnswer, setShowWrongAnswer] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -54,8 +55,19 @@ export default function LessonPlayer() {
     try {
       setSubmitting(true);
       const result = await apiService.submitAnswer(sessionId, { answer: selectedAnswer });
-      setSessionState(result.result);
-      setSelectedAnswer(null);
+      
+      // Check if answer was correct
+      const isCorrect = selectedAnswer === sessionState.state.correct_answer;
+      
+      if (isCorrect) {
+        setSessionState(result.result);
+        setSelectedAnswer(null);
+        setShowWrongAnswer(false);
+      } else {
+        // Show wrong answer feedback
+        setShowWrongAnswer(true);
+        // Don't advance to next state, let user try again
+      }
     } catch (error) {
       console.error('Failed to submit answer:', error);
     } finally {
@@ -127,6 +139,7 @@ export default function LessonPlayer() {
   const currentState = sessionState?.state;
   const isQuestion = currentState?.type === 'question';
   const isContent = currentState?.type === 'content';
+  const isEndNotes = currentState?.type === 'end_notes';
 
   return (
       <div className="p-6 space-y-6">
@@ -193,7 +206,10 @@ export default function LessonPlayer() {
                     {currentState.options.map((option: string, index: number) => (
                       <button
                         key={index}
-                        onClick={() => setSelectedAnswer(index)}
+                        onClick={() => {
+                          setSelectedAnswer(index);
+                          setShowWrongAnswer(false);
+                        }}
                         disabled={submitting}
                         className={
                           "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active " +
@@ -208,11 +224,59 @@ export default function LessonPlayer() {
                   </div>
                 )}
 
-                {currentState?.explanation && (
+                {showWrongAnswer && (
+                  <div className="mt-4 p-3 border-2 border-red-500 bg-red-50 rounded-md">
+                    <p className="text-red-700 font-medium text-sm">
+                      Oops! Wrong answer. Try again!
+                    </p>
+                  </div>
+                )}
+
+                {currentState?.explanation && !showWrongAnswer && (
                   <div className="mt-4 text-muted text-sm">
                     {currentState.explanation}
                   </div>
                 )}
+              </div>
+            )}
+
+            {isEndNotes && (
+              <div className="text-center space-y-6">
+                <div className="prose prose-black max-w-none">
+                  <h2 className="font-heading font-semibold text-xl tracking-tight text-black">
+                    Lesson Summary
+                  </h2>
+                  <div className="text-black leading-relaxed">
+                    {currentState?.summary || 'Great job completing this lesson!'}
+                  </div>
+                  
+                  {currentState?.key_takeaways && currentState.key_takeaways.length > 0 && (
+                    <div className="mt-6">
+                      <h3 className="font-heading font-semibold text-lg text-black mb-3">
+                        Key Takeaways
+                      </h3>
+                      <ul className="space-y-2 text-left max-w-md mx-auto">
+                        {currentState.key_takeaways.map((takeaway: string, index: number) => (
+                          <li key={index} className="flex items-start gap-2">
+                            <span className="text-accent-orange font-bold">•</span>
+                            <span className="text-black">{takeaway}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex justify-center gap-4 pt-6">
+                  <ControlButton
+                    variant="primary"
+                    onClick={() => navigate('/lessons')}
+                    className="flex items-center gap-2"
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    All Done - Back to Lessons
+                  </ControlButton>
+                </div>
               </div>
             )}
           </div>
@@ -246,6 +310,10 @@ export default function LessonPlayer() {
               Submit Answer
               <ArrowRight className="w-4 h-4" />
             </ControlButton>
+          )}
+          
+          {isEndNotes && (
+            <div className="w-24" />
           )}
         </div>
       </div>

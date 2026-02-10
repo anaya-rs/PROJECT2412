@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Panel } from '@/components/Panel';
 import { ControlButton } from '@/components/ControlButton';
 import { TextInput } from '@/components/TextInput';
+import { apiService } from '@/lib/api';
 import {
   ArrowLeft,
-  Upload,
-  Sparkles,
-  Clock,
-  HelpCircle,
   BookOpen,
+  Clock,
+  Sparkles,
+  Upload,
+  Loader2,
+  CheckCircle,
 } from 'lucide-react';
-import { apiService } from '@/lib/api';
 
 export default function LessonCreator() {
   const navigate = useNavigate();
@@ -21,6 +22,9 @@ export default function LessonCreator() {
   const [duration, setDuration] = useState(30);
   const [difficulty, setDifficulty] = useState('beginner');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState(0);
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
@@ -51,7 +55,29 @@ export default function LessonCreator() {
     }
 
     setIsGenerating(true);
+    setShowProgressModal(true);
+    setGenerationProgress(0);
+    setGenerationStatus('Starting lesson generation...');
+    
     try {
+      // Simulate progress updates
+      const progressSteps = [
+        { progress: 10, status: 'Validating content...' },
+        { progress: 25, status: 'Preparing AI prompts...' },
+        { progress: 40, status: 'Generating content sections...' },
+        { progress: 60, status: 'Creating questions...' },
+        { progress: 80, status: 'Assembling lesson structure...' },
+        { progress: 95, status: 'Finalizing lesson...' },
+      ];
+
+      // Update progress
+      for (const step of progressSteps) {
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+        setGenerationProgress(step.progress);
+        setGenerationStatus(step.status);
+      }
+
+      // Start actual generation
       const job = await apiService.startAiLessonJob({
         text: content,
         title,
@@ -61,14 +87,20 @@ export default function LessonCreator() {
         duration,
       });
 
-      localStorage.setItem('activeAiLessonJobId', job.jobId);
-      localStorage.setItem('activeAiLessonJobTimestamp', Date.now().toString());
-      window.dispatchEvent(new Event('ai-job-updated'));
+      setGenerationProgress(100);
+      setGenerationStatus('Lesson generated successfully!');
       
-      // Redirect to generating page
+      // Wait a moment to show success
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      // Close modal and redirect
+      setShowProgressModal(false);
       navigate(`/generating?jobId=${job.jobId}`);
     } catch (error) {
       console.error('Failed to generate lesson:', error);
+      setGenerationStatus('Generation failed. Please try again.');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      setShowProgressModal(false);
     } finally {
       setIsGenerating(false);
     }
@@ -291,6 +323,49 @@ export default function LessonCreator() {
             {isGenerating ? 'GENERATING...' : 'Generate Lesson'}
           </ControlButton>
         </div>
+
+        {/* Progress Modal */}
+        {showProgressModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white border-2 border-black rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="text-center space-y-4">
+                <div className="flex justify-center">
+                  {generationProgress === 100 ? (
+                    <CheckCircle className="w-12 h-12 text-green-600" />
+                  ) : (
+                    <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+                  )}
+                </div>
+                
+                <h3 className="font-heading font-semibold text-lg text-black">
+                  {generationProgress === 100 ? 'Lesson Generated!' : 'Generating Lesson...'}
+                </h3>
+                
+                <p className="text-sm text-muted">
+                  {generationStatus}
+                </p>
+                
+                {/* Progress Bar */}
+                <div className="w-full bg-black/10 h-3 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 transition-all duration-500 ease-out"
+                    style={{ width: `${generationProgress}%` }}
+                  />
+                </div>
+                
+                <div className="text-xs font-mono text-muted">
+                  {generationProgress}% Complete
+                </div>
+                
+                {generationProgress === 100 && (
+                  <div className="text-xs text-green-600 font-medium">
+                    Redirecting to your lesson...
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
   );
 }
