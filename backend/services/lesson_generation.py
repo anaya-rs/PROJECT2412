@@ -290,14 +290,59 @@ NO ADDITIONAL TEXT OR EXPLANATIONS!"""
                         ))
                     elif slot_type == "question":
                         from domain.state import QuestionState
+                        
+                        # Parse the question content properly
+                        lines = slot_content.strip().split('\n')
+                        logger.info(f"Raw question content: {repr(slot_content)}")
+                        logger.info(f"Question lines: {lines}")
+                        
+                        prompt_text = lines[0] if lines else "No question provided"
+                        
+                        # Parse options and correct answer
+                        options = []
+                        correct_answer = 0
+                        explanation = "No explanation provided"
+                        
+                        for line in lines[1:]:
+                            line = line.strip()
+                            logger.info(f"Processing line: {repr(line)}")
+                            if line.startswith(('A)', 'B)', 'C)', 'D)')):
+                                option_text = line[2:].strip()
+                                # Remove any correct: or explanation: from the option
+                                if ': correct:' in option_text:
+                                    option_text = option_text.split(': correct:')[0].strip()
+                                elif ': explanation:' in option_text:
+                                    option_text = option_text.split(': explanation:')[0].strip()
+                                options.append(option_text)
+                                logger.info(f"Found option: {repr(option_text)}")
+                            elif line.lower().startswith('correct:'):
+                                # Extract the correct letter
+                                correct_letter = line.split(':')[1].strip().upper()
+                                if correct_letter == 'A': correct_answer = 0
+                                elif correct_letter == 'B': correct_answer = 1
+                                elif correct_letter == 'C': correct_answer = 2
+                                elif correct_letter == 'D': correct_answer = 3
+                                logger.info(f"Found correct answer: {correct_letter} -> {correct_answer}")
+                            elif line.lower().startswith('explanation:'):
+                                parts = line.split(':', 1)
+                                if len(parts) > 1:
+                                    explanation = parts[1].strip()
+                                logger.info(f"Found explanation: {repr(explanation)}")
+                        
+                        logger.info(f"Parsed {len(options)} options, correct_answer: {correct_answer}")
+                        
+                        # Ensure we have 4 options
+                        while len(options) < 4:
+                            options.append(f"Option {chr(65 + len(options))}")
+                        
                         parsed_states.append(QuestionState(
                             type="question",
                             id=f"question_{i+1}",
                             question_format="mcq",
-                            prompt=slot_content.strip()[:300],  # Truncate to fit validation
-                            options=["Option A", "Option B", "Option C", "Option D"],
-                            correct_answer=0,
-                            explanation="This is the correct answer based on the lesson content."
+                            prompt=prompt_text[:300],  # Truncate to fit validation
+                            options=options[:4],
+                            correct_answer=correct_answer,
+                            explanation=explanation[:200]  # Truncate explanation
                         ))
                     elif slot_type == "end_notes":
                         from domain.state import EndNotesState
@@ -379,11 +424,25 @@ Content:"""
 Topic: {source_text}
 
 Rules:
-- One clear question
-- Exactly 4 options (A, B, C, D)
-- Mark correct answer with 'correct: <letter>'
-- Brief explanation with 'explanation: <text>'
+- One clear question sentence
+- Exactly 4 options in this format:
+A) [option text]
+B) [option text]
+C) [option text]
+D) [option text]
+- One line: correct: [letter]
+- One line: explanation: [text]
 - End with <END>
+
+Example:
+What is 2+2?
+A) 3
+B) 4
+C) 5
+D) 6
+correct: B
+explanation: 2+2 equals 4.
+<END>
 
 Question:"""
                 
