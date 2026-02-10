@@ -9,6 +9,7 @@ import { Layout } from "@/components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import LessonCreator from "./pages/LessonCreator";
+import LessonGenerating from "./pages/LessonGenerating";
 import LessonPlayer from "./pages/LessonPlayer";
 import NotFound from "./pages/NotFound";
 import Lessons from "./pages/Lessons";
@@ -53,6 +54,14 @@ const App = () => (
                   <Layout>
                     <LessonCreator />
                   </Layout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/generating"
+              element={
+                <ProtectedRoute>
+                  <LessonGenerating />
                 </ProtectedRoute>
               }
             />

@@ -21,22 +21,8 @@ function LessonCard({ lesson, onPlay, onDelete }: {
   onPlay: () => void;
   onDelete: () => void;
 }) {
-  const metadata = lesson.metadata || {};
-  const difficulty = metadata.difficulty || 'beginner';
-  const duration = metadata.duration || 30;
-  const computedQuestionCount = (() => {
-    const nodes = lesson.nodes || {};
-    if (Array.isArray(nodes)) {
-      return nodes.filter((n: any) => n?.type === 'question').length;
-    }
-    if (typeof nodes === 'object') {
-      return Object.values(nodes).filter((n: any) => (n as any)?.type === 'question').length;
-    }
-    return 0;
-  })();
-
-  const questionCount = metadata.questionCount ?? computedQuestionCount;
-  const fileName = metadata.fileName;
+  const questionCount = lesson.states?.filter((state: any) => state?.type === 'question').length || 0;
+  const duration = lesson.estimated_duration_minutes || 30;
 
   return (
     <Panel className="hover:border-accent-amber transition-all duration-base ease-standard btn-active">
@@ -67,14 +53,8 @@ function LessonCard({ lesson, onPlay, onDelete }: {
 
         {/* Description */}
         <p className="text-sm text-muted line-clamp-2">
-          {lesson.description}
+          {lesson.states?.length} states • {questionCount} questions
         </p>
-
-        {fileName && (
-          <div className="text-xs text-muted font-mono truncate">
-            {fileName}
-          </div>
-        )}
 
         {/* Metadata */}
         <div className="flex items-center gap-6 text-xs font-mono text-muted">
@@ -87,7 +67,7 @@ function LessonCard({ lesson, onPlay, onDelete }: {
             {questionCount} questions
           </div>
           <div className="px-2 py-1 bg-accent-yellow text-black font-medium rounded">
-            {difficulty}
+            {lesson.schema_version}
           </div>
         </div>
       </div>
@@ -101,7 +81,6 @@ export default function Lessons() {
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedDifficulty, setSelectedDifficulty] = useState('all');
 
   const fetchLessons = async () => {
     try {
@@ -122,12 +101,9 @@ export default function Lessons() {
   }, []);
 
   const filteredLessons = lessons.filter((lesson) => {
-    const metadata = lesson.metadata || {};
     const matchesSearch = 
-      lesson.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      lesson.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesDifficulty = selectedDifficulty === 'all' || metadata.difficulty === selectedDifficulty;
-    return matchesSearch && matchesDifficulty;
+      lesson.title.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesSearch;
   });
 
   const handleDelete = async (id: number) => {
@@ -139,8 +115,6 @@ export default function Lessons() {
       setError('Failed to delete lesson');
     }
   };
-
-  const difficulties = ['all', 'beginner', 'intermediate', 'advanced'];
 
   return (
       <div className="p-6">
@@ -169,7 +143,7 @@ export default function Lessons() {
 
         {/* Filters */}
         <Panel className="mb-6">
-          <div className="flex flex-col lg:flex-row gap-4">
+          <div className="flex gap-4">
             <div className="flex-1">
               <TextInput
                 placeholder="Search lessons..."
@@ -177,26 +151,13 @@ export default function Lessons() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div className="flex gap-2">
-              <select
-                value={selectedDifficulty}
-                onChange={(e) => setSelectedDifficulty(e.target.value)}
-                className="px-4 py-2 border-2 border-black bg-white text-sm rounded-md focus:outline-none focus:border-accent-orange"
-              >
-                {difficulties.map(diff => (
-                  <option key={diff} value={diff}>
-                    {diff.charAt(0).toUpperCase() + diff.slice(1)}
-                  </option>
-                ))}
-              </select>
-              <ControlButton 
-                variant="secondary"
-                onClick={fetchLessons}
-                className="transform active:scale-95 transition-transform"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </ControlButton>
-            </div>
+            <ControlButton 
+              variant="secondary"
+              onClick={fetchLessons}
+              className="transform active:scale-95 transition-transform"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </ControlButton>
           </div>
         </Panel>
 
@@ -221,13 +182,10 @@ export default function Lessons() {
             <div className="text-center py-12">
               <BookOpen className="w-12 h-12 text-muted mx-auto mb-4" />
               <div className="text-lg font-heading font-medium text-black mb-2">
-                {searchQuery || selectedDifficulty !== 'all' ? 'No lessons found' : 'No lessons yet'}
+                {searchQuery ? 'No lessons found' : 'No lessons yet'}
               </div>
               <div className="text-sm text-muted mb-4">
-                {searchQuery || selectedDifficulty !== 'all' 
-                  ? 'Try adjusting your filters'
-                  : 'Create your first lesson to get started'
-                }
+                {searchQuery ? 'Try adjusting your search' : 'Create your first lesson to get started'}
               </div>
               <ControlButton 
                 variant="primary"

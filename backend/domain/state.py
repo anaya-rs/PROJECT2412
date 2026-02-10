@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class BaseState(BaseModel):
+    type: Literal["content", "question", "end_notes"]
     id: str = Field(..., min_length=1)
-    type: Literal["content", "question"]
 
 
 class ContentState(BaseState):
@@ -58,7 +58,14 @@ class QuestionState(BaseState):
         return v
 
 
-AuthoredState = ContentState | QuestionState
+class EndNotesState(BaseState):
+    type: Literal["end_notes"]
+    summary: str = Field(..., min_length=1, max_length=900)
+    key_takeaways: List[str] = Field(..., min_items=1, max_items=5)
+
+
+# Use discriminator for proper union validation
+AuthoredState = Union[ContentState, QuestionState, EndNotesState]
 
 
 # Domain Events (pure, no persistence)

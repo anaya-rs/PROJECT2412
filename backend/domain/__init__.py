@@ -3,7 +3,7 @@ Domain Module - Pure business logic, no external dependencies
 """
 
 from .state import (
-    BaseState, ContentState, QuestionState, 
+    BaseState, ContentState, QuestionState, EndNotesState,
     AuthoredState, DomainEvent
 )
 from .lesson import Lesson
@@ -14,7 +14,7 @@ from .fsm import (
 from .validation import (
     validate_duration_constraints,
     validate_lesson_structure,
-    DURATION_RULES
+    DURATION_TEMPLATES
 )
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "BaseState",
     "ContentState", 
     "QuestionState",
+    "EndNotesState",
     "AuthoredState",
     "DomainEvent",
     
@@ -37,5 +38,5 @@ __all__ = [
     # Validation
     "validate_duration_constraints",
     "validate_lesson_structure",
-    "DURATION_RULES"
+    "DURATION_TEMPLATES"
 ]

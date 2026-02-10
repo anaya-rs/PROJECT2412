@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { apiService, AiJob } from '@/lib/api';
@@ -12,6 +12,7 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<AiJob | null>(null);
 
@@ -22,6 +23,16 @@ export function Layout({ children }: LayoutProps) {
   useEffect(() => {
     const storedJobId = localStorage.getItem('activeAiLessonJobId');
     if (storedJobId) {
+      // Check if the job is stale (older than 1 hour) and clear it
+      const jobTimestamp = localStorage.getItem('activeAiLessonJobTimestamp');
+      if (jobTimestamp) {
+        const age = Date.now() - parseInt(jobTimestamp);
+        if (age > 3600000) { // 1 hour
+          localStorage.removeItem('activeAiLessonJobId');
+          localStorage.removeItem('activeAiLessonJobTimestamp');
+          return;
+        }
+      }
       setActiveJobId(storedJobId);
     }
   }, []);
@@ -65,9 +76,26 @@ export function Layout({ children }: LayoutProps) {
           if (intervalId) {
             window.clearInterval(intervalId);
           }
+          // Auto-dismiss completed/failed jobs after 5 seconds
+          setTimeout(() => {
+            localStorage.removeItem('activeAiLessonJobId');
+            localStorage.removeItem('activeAiLessonJobTimestamp');
+            setActiveJobId(null);
+            setActiveJob(null);
+          }, 5000);
         }
-      } catch {
+      } catch (error) {
         if (cancelled) return;
+        // If job not found (404), dismiss it
+        if (error.message?.includes('404') || error.message?.includes('Job not found')) {
+          if (intervalId) {
+            window.clearInterval(intervalId);
+          }
+          localStorage.removeItem('activeAiLessonJobId');
+          localStorage.removeItem('activeAiLessonJobTimestamp');
+          setActiveJobId(null);
+          setActiveJob(null);
+        }
       }
     };
 
@@ -103,7 +131,8 @@ export function Layout({ children }: LayoutProps) {
         </main>
       </div>
 
-      {activeJob && (
+      {/* Show progress banner only when NOT on generating page */}
+      {activeJob && location.pathname !== '/generating' && (
         <div className="fixed bottom-4 left-4 right-4 z-50">
           <div className="border-2 border-black bg-white rounded-md p-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
@@ -126,10 +155,10 @@ export function Layout({ children }: LayoutProps) {
                 {(activeJob.status === 'queued' || activeJob.status === 'running') && (
                   <ControlButton
                     variant="secondary"
-                    onClick={() => navigate('/lessons')}
+                    onClick={() => navigate(`/generating?jobId=${activeJob.id}`)}
                     className="px-3 py-1.5"
                   >
-                    Lessons
+                    View Progress
                   </ControlButton>
                 )}
 

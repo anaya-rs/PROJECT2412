@@ -1,17 +1,42 @@
-const API_BASE_URL = 'http://localhost:5002/api';
+const API_BASE_URL = 'http://localhost:5003/api';
 
 export interface Lesson {
   id: number;
   title: string;
-  description: string;
-  start_node_id: string;  // Updated to match backend
-  nodes: any;
-  transitions: any;
-  metadata?: any;
-  schema_version?: string;  // Added for new architecture
-  user_id?: number;  // Added for new architecture
-  created_at: string;  // Updated to match backend
-  updated_at: string;  // Updated to match backend
+  schema_version: string;
+  estimated_duration_minutes: number;
+  states: AuthoredState[];
+  created_at: string;
+}
+
+export interface AuthoredState {
+  id: string;
+  type: "content" | "question" | "end_notes";
+  text?: string;
+  question_format?: "mcq" | "short_answer";
+  prompt?: string;
+  options?: string[];
+  correct_answer?: number;
+  explanation?: string;
+  summary?: string;
+  key_takeaways?: string[];
+}
+
+export interface SessionState {
+  state: AuthoredState | null;
+  progress: number;
+  attempts_left: number;
+  completed: boolean;
+}
+
+export interface SessionResponse {
+  session_id: string;
+  session_state: SessionState;
+}
+
+export interface ActionResult {
+  session_id: string;
+  result: SessionState;
 }
 
 export interface AiJob {
@@ -113,6 +138,23 @@ class ApiService {
 
   async deleteLesson(id: number): Promise<void> {
     return this.delete(`/lessons/${id}`);
+  }
+
+  // Session endpoints
+  async createSession(lessonId: number): Promise<SessionResponse> {
+    return this.post<SessionResponse>(`/sessions?lesson_id=${lessonId}`);
+  }
+
+  async getSession(sessionId: string): Promise<SessionResponse> {
+    return this.get<SessionResponse>(`/sessions/${sessionId}`);
+  }
+
+  async submitAnswer(sessionId: string, answer: any): Promise<ActionResult> {
+    return this.post<ActionResult>(`/sessions/${sessionId}/answer`, { answer });
+  }
+
+  async submitNext(sessionId: string, payload?: any): Promise<ActionResult> {
+    return this.post<ActionResult>(`/sessions/${sessionId}/next`, payload);
   }
 
   // AI endpoints

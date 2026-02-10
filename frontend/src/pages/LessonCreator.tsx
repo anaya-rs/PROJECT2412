@@ -62,8 +62,11 @@ export default function LessonCreator() {
       });
 
       localStorage.setItem('activeAiLessonJobId', job.jobId);
+      localStorage.setItem('activeAiLessonJobTimestamp', Date.now().toString());
       window.dispatchEvent(new Event('ai-job-updated'));
-      navigate('/lessons');
+      
+      // Redirect to generating page
+      navigate(`/generating?jobId=${job.jobId}`);
     } catch (error) {
       console.error('Failed to generate lesson:', error);
     } finally {
@@ -138,8 +141,6 @@ export default function LessonCreator() {
                     <option value={5}>5 minutes</option>
                     <option value={15}>15 minutes</option>
                     <option value={30}>30 minutes</option>
-                    <option value={45}>45 minutes</option>
-                    <option value={60}>60 minutes</option>
                   </select>
                 </div>
 

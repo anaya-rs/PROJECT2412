@@ -57,11 +57,19 @@ def init_db():
 @contextmanager
 def get_db():
     """Get database session"""
-    db = SessionLocal()
+    engine = create_engine(DATABASE_URL)
+    Session = sessionmaker(bind=engine)
+    Base.metadata.create_all(engine)
+    
+    # Create job table if it doesn't exist
+    from models.job import JobDB
+    JobDB.metadata.create_all(engine)
+    
+    session = Session()
     try:
-        yield db
+        yield session
     finally:
-        db.close()
+        session.close()
 
 
 def get_db_session():
