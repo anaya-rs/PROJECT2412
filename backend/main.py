@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core import init_db, setup_logging, get_settings
 from core.dependencies import get_current_db, verify_authorization
-from routers import lessons_router, sessions_router, analytics_router
+from routers import lessons_router, sessions_router, analytics_router, auth_router, ai_router, upload_router
 
 # Explicit import of Depends to avoid any import issues
 from fastapi import Depends as FastAPIDepends
@@ -44,6 +44,9 @@ def create_app() -> FastAPI:
     )
     
     # Include routers
+    app.include_router(auth_router)
+    app.include_router(ai_router)
+    app.include_router(upload_router)
     app.include_router(lessons_router)
     app.include_router(sessions_router)
     app.include_router(analytics_router)

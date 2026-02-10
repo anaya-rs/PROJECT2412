@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:5002/api';
 
 export interface Lesson {
   id: number;
@@ -100,8 +100,7 @@ class ApiService {
 
   // Lesson endpoints
   async getLessons(): Promise<Lesson[]> {
-    const response = await this.get<{lessons: Lesson[]}>('/lessons');
-    return response.lessons;
+    return this.get<Lesson[]>('/lessons');
   }
 
   async getLesson(id: number): Promise<Lesson> {

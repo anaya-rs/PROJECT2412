@@ -33,6 +33,11 @@ export default function LessonCreator() {
       const result = await apiService.uploadFile(file);
       setContent(result.text);
       setUploadedFileName(result.fileName || file.name);
+      // Auto-fill title with filename (without extension) if title is empty
+      if (!title) {
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+        setTitle(nameWithoutExt);
+      }
     } catch (error) {
       console.error('Failed to upload file:', error);
     } finally {
@@ -41,7 +46,7 @@ export default function LessonCreator() {
   };
 
   const handleGenerate = async () => {
-    if (!title || !content) {
+    if (!title || !content || (content?.length || 0) < 100) {
       return;
     }
 
@@ -202,9 +207,15 @@ export default function LessonCreator() {
                   />
                   <div className="flex justify-between items-center mt-2">
                     <span className="text-xs text-muted">
-                      {content.length} characters {content.length < 100 && `(minimum 100 required)`}
+                      {content?.length || 0} characters
+                      {content?.length < 100 && content?.length > 0 && (
+                        <span className="text-red-500 font-medium"> (too short - minimum 100 required)</span>
+                      )}
+                      {content?.length === 0 && (
+                        <span className="text-gray-400"> (minimum 100 required)</span>
+                      )}
                     </span>
-                    {content.length >= 100 && (
+                    {content?.length >= 100 && (
                       <span className="text-xs text-green-600 font-medium">✓ Ready to generate</span>
                     )}
                   </div>
@@ -248,11 +259,11 @@ export default function LessonCreator() {
                 </h3>
                 <div className="max-h-64 overflow-y-auto">
                   <div className="text-sm text-muted leading-relaxed whitespace-pre-wrap">
-                    {content.length > 500 ? content.substring(0, 500) + '...' : content}
+                    {(content?.length || 0) > 500 ? content?.substring(0, 500) + '...' : content}
                   </div>
-                  {content.length > 500 && (
+                  {(content?.length || 0) > 500 && (
                     <div className="text-xs text-accent-orange font-medium mt-2">
-                      Showing first 500 characters of {content.length} total
+                      Showing first 500 characters of {content?.length || 0} total
                     </div>
                   )}
                 </div>
@@ -272,7 +283,7 @@ export default function LessonCreator() {
           <ControlButton
             variant="primary"
             onClick={handleGenerate}
-            disabled={!title || !content || isGenerating}
+            disabled={!title || !content || (content?.length || 0) < 100 || isGenerating}
             loading={isGenerating}
             className="min-w-[140px]"
           >
