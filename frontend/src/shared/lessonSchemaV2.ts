@@ -26,32 +26,37 @@ export const ContentStateSchema = z.object({
 const QuestionStateBaseSchema = z.object({
   id: z.string().min(1),
   type: z.literal("question"),
-  question_format: z.enum(["mcq", "short_answer"]),
+  question_type: z.enum(["single_choice", "multiple_choice"]),
   prompt: z.string().min(10).max(300),
   explanation: z.string().min(20).max(500),
-  options: z.array(z.string()).min(2).optional(),
-  correct_answer: z.union([z.number(), z.string()]),
+  options: z.array(z.string()).min(2).max(8),
+  correct_answers: z.array(z.number()).min(1),
 });
 
 export const QuestionStateSchema = QuestionStateBaseSchema.refine(
   (data) => {
-    if (data.question_format === "mcq") {
-      return (
-        data.options !== undefined &&
-        data.options.length >= 2 &&
-        typeof data.correct_answer === "number" &&
-        data.correct_answer >= 0 &&
-        data.correct_answer < data.options.length
-      );
+    // Validate correct answer indices are within bounds
+    for (const idx of data.correct_answers) {
+      if (idx < 0 || idx >= data.options.length) {
+        return false;
+      }
     }
-    if (data.question_format === "short_answer") {
-      return typeof data.correct_answer === "string";
+    
+    // Single choice must have exactly 1 correct answer
+    if (data.question_type === "single_choice" && data.correct_answers.length !== 1) {
+      return false;
     }
-    return false;
+    
+    // Multiple choice must have at least 1 correct answer
+    if (data.question_type === "multiple_choice" && data.correct_answers.length < 1) {
+      return false;
+    }
+    
+    return true;
   },
   {
-    message: "Question validation failed",
-    path: ["correct_answer"],
+    message: "Question validation failed - check correct_answers array",
+    path: ["correct_answers"],
   }
 );
 
@@ -177,29 +182,51 @@ export function isQuestionState(state: AuthoredState): state is QuestionState {
 
 export function validateQuestionAnswer(
   state: QuestionState,
-  answer: number | string
+  answer: number[] | number
 ): { correct: boolean; error?: string } {
-  if (state.question_format === "mcq") {
-    if (typeof answer !== "number") {
-      return { correct: false, error: "MCQ answer must be a number" };
+  // Convert single number to array for uniform handling
+  const userAnswers = Array.isArray(answer) ? answer : [answer];
+  
+  // Validate answer indices are within bounds
+  for (const idx of userAnswers) {
+    if (typeof idx !== "number") {
+      return { correct: false, error: "Answer must be a number" };
     }
-    if (answer < 0 || answer >= (state.options?.length || 0)) {
+    if (idx < 0 || idx >= state.options.length) {
       return { correct: false, error: "Answer index out of bounds" };
     }
-    return { correct: answer === state.correct_answer };
   }
   
-  if (state.question_format === "short_answer") {
-    if (typeof answer !== "string") {
-      return { correct: false, error: "Short answer must be a string" };
+  // Check correctness based on question type
+  if (state.question_type === "single_choice") {
+    // For single choice, user should provide exactly one answer
+    if (userAnswers.length !== 1) {
+      return { correct: false, error: "Single choice requires exactly one answer" };
     }
-    // Simple string comparison - could be enhanced for fuzzy matching
-    return { 
-      correct: answer.trim().toLowerCase() === (state.correct_answer as string).trim().toLowerCase() 
-    };
+    return { correct: userAnswers[0] === state.correct_answers[0] };
   }
   
-  return { correct: false, error: "Unknown question format" };
+  if (state.question_type === "multiple_choice") {
+    // For multiple choice, check if all user answers are in correct answers
+    // and all correct answers are selected by user
+    const correctSet = new Set(state.correct_answers);
+    const userSet = new Set(userAnswers);
+    
+    // Check if sets are equal
+    if (correctSet.size !== userSet.size) {
+      return { correct: false };
+    }
+    
+    for (const answer of userSet) {
+      if (!correctSet.has(answer)) {
+        return { correct: false };
+      }
+    }
+    
+    return { correct: true };
+  }
+  
+  return { correct: false, error: "Unknown question type" };
 }
 
 export function getLessonDurationStats(lesson: LessonV2): {

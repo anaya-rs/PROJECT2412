@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5003/api';
+const API_BASE_URL = 'http://localhost:5005/api';
 
 export interface Lesson {
   id: number;
@@ -13,10 +13,10 @@ export interface AuthoredState {
   id: string;
   type: "content" | "question" | "end_notes";
   text?: string;
-  question_format?: "mcq" | "short_answer";
+  question_type?: "single_choice" | "multiple_choice";
   prompt?: string;
   options?: string[];
-  correct_answer?: number;
+  correct_answers?: number[];
   explanation?: string;
   summary?: string;
   key_takeaways?: string[];
@@ -27,6 +27,10 @@ export interface SessionState {
   progress: number;
   attempts_left: number;
   completed: boolean;
+  status?: 'retry' | 'reveal_answer' | 'success';
+  message?: string;
+  correct_answer?: string | number;
+  allow_next?: boolean;
 }
 
 export interface SessionResponse {
@@ -52,8 +56,8 @@ export interface AiJob {
   difficulty?: string;
   duration?: number;
   questionCount?: number;
-  created_at?: string;  // Updated to match backend
-  updated_at?: string;  // Updated to match backend
+  created_at?: string;  
+  updated_at?: string; 
 }
 
 class ApiService {
@@ -78,7 +82,10 @@ class ApiService {
   }
 
   async post<T>(endpoint: string, data?: any): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    // Add cache-busting timestamp for CORS debugging
+    const url = `${API_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}_t=${Date.now()}`;
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: data ? JSON.stringify(data) : undefined,
@@ -120,7 +127,19 @@ class ApiService {
 
   // Auth endpoints
   async login(username: string, password: string) {
-    return this.post('/auth/login', { username, password });
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    }
+    
+    return response.json();
   }
 
   // Lesson endpoints
@@ -150,11 +169,11 @@ class ApiService {
   }
 
   async submitAnswer(sessionId: string, answer: any): Promise<ActionResult> {
-    return this.post<ActionResult>(`/sessions/${sessionId}/answer`, { answer });
+    return this.post<ActionResult>(`/sessions/${sessionId}/answer`, { type: 'answer', payload: { answer } });
   }
 
   async submitNext(sessionId: string, payload?: any): Promise<ActionResult> {
-    return this.post<ActionResult>(`/sessions/${sessionId}/next`, payload);
+    return this.post<ActionResult>(`/sessions/${sessionId}/next`, payload || {});
   }
 
   // AI endpoints

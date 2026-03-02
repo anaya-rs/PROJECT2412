@@ -1,190 +1,75 @@
 """
-Lesson Runtime Service - Core runtime orchestration
+Lesson Runtime Service - Manages lesson sessions and state with database persistence
 """
 
-from typing import Dict, Any
+import logging
+from typing import Dict, Any, Optional
+import uuid
+import json
 from datetime import datetime
+from sqlalchemy.orm import Session
 
-from domain.lesson import Lesson
-from domain.fsm import UserAction, FSMResult, step
-from domain.state import AuthoredState
 from models.lesson import LessonDB
-from models.session import LessonSessionDB
+from models.session_runtime import LessonSessionRuntimeDB
 from models.analytics import AnalyticsEventDB
+
+logger = logging.getLogger(__name__)
 
 
 class LessonRuntimeService:
-    """
-    Core runtime service - orchestrates FSM and persistence.
+    """Service for managing lesson sessions and state transitions with database persistence"""
     
-    This is the single authority for lesson execution logic.
-    """
-    
-    def __init__(self, db_session):
-        self.db = db_session
+    def __init__(self, db: Session):
+        self.db = db
     
     def start_session(self, lesson_id: int, user_id: int) -> str:
-        """
-        Start a new lesson session.
+        """Start a new lesson session with database persistence"""
+        session_id = str(uuid.uuid4())
         
-        Args:
-            lesson_id: Lesson ID
-            user_id: User ID
-            
-        Returns:
-            Session ID (UUID)
-        """
-        import uuid
-        
-        # Load lesson
-        lesson_db = self.db.query(LessonDB).filter(LessonDB.id == lesson_id).first()
-        if not lesson_db:
+        # Verify lesson exists
+        lesson = self.db.query(LessonDB).filter(LessonDB.id == lesson_id).first()
+        if not lesson:
             raise ValueError(f"Lesson {lesson_id} not found")
         
-        lesson = lesson_db.to_domain()
-        
-        # Create session
-        session_id = str(uuid.uuid4())
-        from domain.fsm import LessonSession
-        
-        session_domain = LessonSession(
-            id=session_id,
-            lesson_id=lesson_id,
-            user_id=user_id,
-            current_index=0,
-            attempts=0,
-            started_at=datetime.utcnow(),
-            last_active_at=datetime.utcnow()
-        )
-        
-        session_db = LessonSessionDB.from_domain(session_domain)
-        self.db.add(session_db)
+        # Create session in database
+        session_runtime = LessonSessionRuntimeDB.create_new(session_id, lesson_id, user_id)
+        self.db.add(session_runtime)
         self.db.commit()
         
-        # Create initial 'enter' event for state 0
-        from domain.state import DomainEvent
+        # Log analytics event
+        self._log_analytics_event(session_id, lesson_id, user_id, 0, "start", {})
         
-        enter_event = DomainEvent(
-            event_type="enter",
-            payload={"state_id": lesson.states[0].id}
-        )
-        
-        self._persist_event(enter_event, session_id, lesson_id, user_id, 0)
-        
+        logger.info(f"Started session {session_id} for lesson {lesson_id}, user {user_id}")
         return session_id
     
-    def submit_action(self, session_id: str, user_id: int, action: UserAction) -> Dict[str, Any]:
-        """
-        Submit user action and process through FSM.
-        
-        Args:
-            session_id: Session ID
-            user_id: User ID
-            action: User action
-            
-        Returns:
-            Result dictionary with next state info
-        """
-        # Load session and lesson
-        session_db = self.db.query(LessonSessionDB).filter(
-            LessonSessionDB.id == session_id
-        ).first()
-        
-        if not session_db:
-            raise ValueError(f"Session {session_id} not found")
-        
-        if session_db.user_id != user_id:
-            raise ValueError("Access denied")
-        
-        lesson_db = self.db.query(LessonDB).filter(
-            LessonDB.id == session_db.lesson_id
-        ).first()
-        
-        if not lesson_db:
-            raise ValueError(f"Lesson {session_db.lesson_id} not found")
-        
-        # Convert to domain models
-        session = session_db.to_domain()
-        lesson = lesson_db.to_domain()
-        
-        # Check if session is already completed
-        if session.completed_at:
-            raise ValueError("Session already completed")
-        
-        # Process action through FSM
-        result = step(lesson, session, action)
-        
-        # Update session state in database
-        session_db.current_index = result.next_index
-        session_db.attempts = result.next_attempts
-        session_db.last_active_at = datetime.utcnow()
-        
-        if result.completed:
-            session_db.completed_at = datetime.utcnow()
-        
-        self.db.commit()
-        
-        # Update domain object with new values
-        session.current_index = result.next_index
-        session.attempts = result.next_attempts
-        session.last_active_at = datetime.utcnow()
-        
-        if result.completed:
-            session.completed_at = datetime.utcnow()
-        
-        # Persist analytics events
-        for i, event in enumerate(result.events):
-            self._persist_event(event, session_id, lesson.id, user_id, session.current_index)
-        
-        # Return response for frontend
-        return self._build_session_response(lesson, session, result)
-    
     def get_session_state(self, session_id: str, user_id: int) -> Dict[str, Any]:
-        """
-        Get current session state for resuming.
-        
-        Args:
-            session_id: Session ID
-            user_id: User ID
-            
-        Returns:
-            Session state dictionary
-        """
-        # Load session and lesson
-        session_db = self.db.query(LessonSessionDB).filter(
-            LessonSessionDB.id == session_id
+        """Get current session state with actual lesson content from database"""
+        # Get session from database
+        session_runtime = self.db.query(LessonSessionRuntimeDB).filter(
+            LessonSessionRuntimeDB.id == session_id
         ).first()
         
-        if not session_db:
+        if not session_runtime:
             raise ValueError(f"Session {session_id} not found")
         
-        if session_db.user_id != user_id:
-            raise ValueError("Access denied")
+        if session_runtime.user_id != user_id:
+            raise ValueError("Unauthorized access to session")
         
-        lesson_db = self.db.query(LessonDB).filter(
-            LessonDB.id == session_db.lesson_id
-        ).first()
+        # Get lesson data
+        lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
+        if not lesson:
+            raise ValueError(f"Lesson {session_runtime.lesson_id} not found")
         
-        if not lesson_db:
-            raise ValueError(f"Lesson {session_db.lesson_id} not found")
+        # Parse lesson states
+        try:
+            states_data = json.loads(lesson.states)
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid lesson states data for lesson {session_runtime.lesson_id}")
         
-        # Convert to domain models
-        session = session_db.to_domain()
-        lesson = lesson_db.to_domain()
-        
-        return self._build_session_response(lesson, session, None)
-    
-    def _persist_event(self, event, session_id: str, lesson_id: int, user_id: int, state_index: int):
-        """Persist analytics event to database"""
-        event_db = AnalyticsEventDB.from_domain_event(event, session_id, lesson_id, user_id)
-        event_db.state_index = state_index
-        self.db.add(event_db)
-        self.db.commit()
-    
-    def _build_session_response(self, lesson: Lesson, session, fsm_result: FSMResult = None) -> Dict[str, Any]:
-        """Build session state response for frontend"""
-        # Check if lesson is completed
-        if session.current_index >= len(lesson.states):
+        # Get current state based on current_index
+        current_index = session_runtime.current_index
+        if current_index >= len(states_data):
+            # Lesson completed
             return {
                 "state": None,
                 "progress": 1.0,
@@ -192,13 +77,166 @@ class LessonRuntimeService:
                 "completed": True
             }
         
-        current_state = lesson.states[session.current_index]
-        progress = session.current_index / len(lesson.states)
-        attempts_left = 2 - session.attempts  # Max 2 attempts per question
+        current_state = states_data[current_index]
         
         return {
-            "state": current_state.model_dump(),
-            "progress": progress,
-            "attempts_left": max(0, attempts_left),
-            "completed": session.completed_at is not None
+            "state": current_state,
+            "progress": current_index / len(states_data),
+            "attempts_left": 3 - session_runtime.attempts,
+            "completed": False
         }
+    
+    def submit_action(self, session_id: str, user_id: int, action) -> Dict[str, Any]:
+        """Submit an action and update session state with analytics logging"""
+        print(f"🔍 [DEBUG] submit_action called with session_id={session_id}, user_id={user_id}, action={action}")
+        
+        # Get session from database
+        session_runtime = self.db.query(LessonSessionRuntimeDB).filter(
+            LessonSessionRuntimeDB.id == session_id
+        ).first()
+        
+        if not session_runtime:
+            raise ValueError(f"Session {session_id} not found")
+        
+        if session_runtime.user_id != user_id:
+            raise ValueError("Unauthorized access to session")
+        
+        print(f"🔍 [DEBUG] Session found: current_index={session_runtime.current_index}, attempts={session_runtime.attempts}")
+        
+        # Get lesson data
+        lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
+        if not lesson:
+            raise ValueError(f"Lesson {session_runtime.lesson_id} not found")
+        
+        # Parse lesson states
+        try:
+            states_data = json.loads(lesson.states)
+            print(f"🔍 [DEBUG] Lesson states parsed: {len(states_data)} states")
+        except json.JSONDecodeError:
+            raise ValueError(f"Invalid lesson states data for lesson {session_runtime.lesson_id}")
+        
+        # Get current state
+        current_index = session_runtime.current_index
+        if current_index >= len(states_data):
+            return {
+                "state": None,
+                "progress": 1.0,
+                "attempts_left": 0,
+                "completed": True
+            }
+        
+        current_state = states_data[current_index]
+        action_type = action.get("type", "unknown")
+        
+        # Handle different action types
+        if action_type == "next":
+            # Only allow next from content states
+            if current_state.get("type") == "question":
+                raise ValueError("Cannot advance from question state without answering")
+            
+            # Move to next state
+            session_runtime.current_index += 1
+            session_runtime.attempts = 0  # Reset attempts for new state
+            session_runtime.last_active_at = datetime.utcnow()
+            
+        elif action_type == "answer":
+            # Handle question answers
+            if current_state.get("type") != "question":
+                raise ValueError("Cannot submit answer to non-question state")
+            
+            payload = action.get("payload", {})
+            selected_option = payload.get("selected_option")
+            correct_option = current_state.get("correct_option")
+            
+            if selected_option == correct_option:
+                # Correct answer - move to next state
+                session_runtime.current_index += 1
+                session_runtime.attempts = 0
+                session_runtime.last_active_at = datetime.utcnow()
+            else:
+                # Wrong answer - increment attempts
+                session_runtime.attempts += 1
+                session_runtime.last_active_at = datetime.utcnow()
+                
+                attempts_left = 3 - session_runtime.attempts
+                if attempts_left > 0:
+                    # Return retry response
+                    self.db.commit()
+                    return {
+                        "state": current_state,
+                        "progress": current_index / len(states_data),
+                        "attempts_left": attempts_left,
+                        "completed": False,
+                        "status": "retry",
+                        "message": "Oops, try again"
+                    }
+                else:
+                    # No attempts left - reveal answer and allow next
+                    self.db.commit()
+                    return {
+                        "state": current_state,
+                        "progress": current_index / len(states_data),
+                        "attempts_left": 0,
+                        "completed": False,
+                        "status": "reveal_answer",
+                        "correct_answer": correct_option,
+                        "allow_next": True
+                    }
+        else:
+            raise ValueError(f"Unknown action type: {action_type}")
+        
+        # Log the action event
+        self._log_analytics_event(
+            session_id, 
+            session_runtime.lesson_id, 
+            user_id, 
+            current_index, 
+            action_type, 
+            action.get("payload", {})
+        )
+        
+        # Check if lesson is completed
+        if session_runtime.current_index >= len(states_data):
+            session_runtime.completed_at = datetime.utcnow()
+            self.db.commit()
+            
+            return {
+                "state": None,
+                "progress": 1.0,
+                "attempts_left": 0,
+                "completed": True
+            }
+        
+        # Get next state
+        next_state = states_data[session_runtime.current_index]
+        self.db.commit()
+        
+        return {
+            "state": next_state,
+            "progress": session_runtime.current_index / len(states_data),
+            "attempts_left": 3 - session_runtime.attempts,
+            "completed": False
+        }
+    
+    def _log_analytics_event(self, session_id: str, lesson_id: int, user_id: int, 
+                           state_index: int, event_type: str, payload: Dict[str, Any]):
+        """Log analytics event for session actions"""
+        try:
+            import json
+            
+            analytics_event = AnalyticsEventDB(
+                session_id=session_id,
+                lesson_id=lesson_id,
+                user_id=user_id,
+                state_index=state_index,
+                event_type=event_type,
+                payload=json.dumps(payload) if payload else None
+            )
+            
+            self.db.add(analytics_event)
+            # Note: Don't commit here to avoid interfering with main transaction
+            # The calling method should handle the commit
+            
+        except Exception as e:
+            logger.error(f"Failed to log analytics event: {e}")
+            # Don't raise - analytics failures shouldn't break the main flow

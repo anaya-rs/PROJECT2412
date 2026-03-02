@@ -1,0 +1,94 @@
+TITLE: Introduction to Machine Learning
+
+LEVEL: Beginner
+ESTIMATED_TIME: 2–3 hours
+PREREQUISITES:
+- Basic Python
+- High school mathematics (algebra, basic probability)
+
+OBJECTIVE:
+By the end of this lesson, the learner should understand what machine learning is, the main types of machine learning, and be able to train a simple model in Python.
+
+---
+
+SECTION 1: What is Machine Learning?
+
+Machine Learning (ML) is a subfield of artificial intelligence that focuses on building systems that learn patterns from data instead of being explicitly programmed.
+
+In traditional programming:
+- Rules are written by humans.
+- Data is processed using those rules.
+- Output is produced.
+
+In machine learning:
+- Data and expected outputs are provided.
+- The system learns the rules automatically.
+- The learned rules are then used to make predictions.
+
+Key idea:
+A machine learning model improves its performance as it is exposed to more data.
+
+---
+
+SECTION 2: Types of Machine Learning
+
+There are three main types of machine learning.
+
+1. Supervised Learning
+- The model is trained on labeled data.
+- Each input has a known output.
+Examples:
+- Email spam detection
+- House price prediction
+- Image classification
+
+2. Unsupervised Learning
+- The model is trained on unlabeled data.
+- The goal is to find patterns or structure.
+Examples:
+- Customer segmentation
+- Clustering documents
+- Anomaly detection
+
+3. Reinforcement Learning
+- An agent learns by interacting with an environment.
+- Feedback is given in the form of rewards or penalties.
+Examples:
+- Game-playing AI
+- Robotics control
+- Recommendation systems
+
+---
+
+SECTION 3: A Simple Example (Supervised Learning)
+
+We will train a simple linear regression model.
+
+Problem:
+Predict a student’s exam score based on the number of hours studied.
+
+Input:
+Hours studied (X)
+
+Output:
+Exam score (y)
+
+---
+
+SECTION 4: Example Code (Python)
+
+```python
+import numpy as np
+from sklearn.linear_model import LinearRegression
+
+# Training data
+X = np.array([[1], [2], [3], [4], [5]])
+y = np.array([40, 50, 60, 70, 80])
+
+# Create and train model
+model = LinearRegression()
+model.fit(X, y)
+
+# Make a prediction
+predicted_score = model.predict([[6]])
+print(predicted_score)

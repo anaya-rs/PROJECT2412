@@ -1,5 +1,5 @@
 """
-Core Module - Application infrastructure
+v 1.1 sore Module - Application infrastructure
 """
 
 from .config import get_settings, Settings

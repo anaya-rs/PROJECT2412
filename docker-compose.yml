@@ -1,0 +1,116 @@
+version: '3.8'
+
+networks:
+  ai-lesson-network:
+    driver: bridge
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-lesson-postgres
+    environment:
+      - POSTGRES_DB=project2412
+      - POSTGRES_USER=project2412
+      - POSTGRES_PASSWORD=securepassword
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - ai-lesson-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project2412 -d project2412"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai-lesson-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - ai-lesson-network
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-lesson-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - ai-lesson-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ai-lesson-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://project2412:securepassword@postgres:5432/project2412
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://ollama:11434
+      - JWT_SECRET=dev-secret-key-change-in-production
+      - RAG_ENABLED=true
+      - OLLAMA_MODEL=qwen2.5:1.5b
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - RETRIEVAL_TOP_K=5
+      - VERIFICATION_ENABLED=true
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./backend:/app
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      ollama:
+        condition: service_healthy
+    networks:
+      - ai-lesson-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ai-lesson-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - /app/node_modules
+    depends_on:
+      - backend
+    networks:
+      - ai-lesson-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  ollama_data:
+    driver: local

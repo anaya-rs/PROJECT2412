@@ -1,5 +1,5 @@
 """
-Analytics Service - Event persistence and aggregation
+v 1.2 analytics service - event persistence and aggregation
 """
 
 from typing import List, Dict, Any, Optional
@@ -12,9 +12,9 @@ from models.lesson import LessonDB
 
 class AnalyticsService:
     """
-    Analytics service - passive event logging and aggregation.
+    analytics service - passive event logging and aggregation.
     
-    Analytics never drive behavior, they only observe.
+    analytics never drive behavior, they only observe.
     """
     
     def __init__(self, db_session):
@@ -22,12 +22,12 @@ class AnalyticsService:
     
     def get_session_events(self, session_id: str) -> List[Dict[str, Any]]:
         """
-        Get all events for a session.
+        get all events for a session.
         
-        Args:
-            session_id: Session ID
+        args:
+            session_id: session id
             
-        Returns:
+        returns:
             List of event dictionaries
         """
         events = self.db.query(AnalyticsEventDB).filter(
@@ -38,12 +38,12 @@ class AnalyticsService:
     
     def get_lesson_analytics(self, lesson_id: int) -> Dict[str, Any]:
         """
-        Get comprehensive analytics for a lesson.
+        get comprehensive analytics for a lesson.
         
-        Args:
-            lesson_id: Lesson ID
+        args:
+            lesson_id: lesson id
             
-        Returns:
+        returns:
             Analytics summary dictionary
         """
         events = self.db.query(AnalyticsEventDB).filter(
@@ -54,14 +54,14 @@ class AnalyticsService:
     
     def get_user_analytics(self, user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Get analytics for a user.
+        get analytics for a user.
         
-        Args:
-            user_id: User ID
-            limit: Maximum number of events
+        args:
+            user_id: user id
+            limit: maximum number of events
             
-        Returns:
-            List of event dictionaries
+        returns:
+            list of event dictionaries
         """
         events = self.db.query(AnalyticsEventDB).filter(
             AnalyticsEventDB.user_id == user_id
@@ -70,7 +70,7 @@ class AnalyticsService:
         return [self._event_to_dict(event) for event in events]
     
     def _event_to_dict(self, event: AnalyticsEventDB) -> Dict[str, Any]:
-        """Convert event to dictionary"""
+        """convert event to dictionary"""
         import json
         
         return {
@@ -85,21 +85,21 @@ class AnalyticsService:
         }
     
     def _analyze_lesson_events(self, events: List[AnalyticsEventDB]) -> Dict[str, Any]:
-        """Analyze events for lesson-level insights"""
+        """analyze events for lesson-level insights"""
         if not events:
             return {}
         
-        # Basic stats
+        # basic stats
         unique_users = len(set(e.user_id for e in events))
         unique_sessions = len(set(e.session_id for e in events))
         
-        # Event type counts
+        # event type counts
         event_counts = {}
         for event in events:
             event_type = event.event_type
             event_counts[event_type] = event_counts.get(event_type, 0) + 1
         
-        # Completion analysis
+        # completion analysis
         completed_sessions = set()
         for event in events:
             if event.event_type == "complete":
@@ -107,7 +107,7 @@ class AnalyticsService:
         
         completion_rate = (len(completed_sessions) / unique_sessions * 100) if unique_sessions > 0 else 0
         
-        # Answer analysis across all sessions
+        # answer analysis across all sessions
         answer_events = [e for e in events if e.event_type == "answer"]
         correct_answers = 0
         total_answers = len(answer_events)
@@ -123,10 +123,10 @@ class AnalyticsService:
         
         avg_accuracy = (correct_answers / total_answers * 100) if total_answers > 0 else 0
         
-        # Drop-off analysis by state
+        # drop-off analysis by state
         state_dropoffs = self._calculate_state_dropoffs(events)
         
-        # Time analysis
+        # time analysis
         session_durations = self._calculate_session_durations(events)
         avg_session_duration = sum(session_durations) / len(session_durations) if session_durations else 0
         
@@ -147,8 +147,8 @@ class AnalyticsService:
         }
     
     def _calculate_state_dropoffs(self, events: List[AnalyticsEventDB]) -> List[Dict[str, Any]]:
-        """Calculate drop-off rates by state"""
-        # Group events by session and state
+        """calculate drop-off rates by state"""
+        # group events by session and state
         session_states = {}
         
         for event in events:
@@ -159,7 +159,7 @@ class AnalyticsService:
                 session_states[session_id] = set()
             session_states[session_id].add(state_index)
         
-        # Calculate drop-offs
+        # calculate drop-offs
         state_stats = {}
         
         for session_id, states in session_states.items():
@@ -179,7 +179,7 @@ class AnalyticsService:
                 if state_idx < max_state:
                     state_stats[state_idx]["sessions_completed"] += 1
         
-        # Calculate drop-off rates
+        # calculate drop-off rates
         dropoffs = []
         for state_idx, stats in state_stats.items():
             entered = stats["sessions_entered"]
@@ -196,7 +196,7 @@ class AnalyticsService:
         return sorted(dropoffs, key=lambda x: x["state_index"])
     
     def _calculate_session_durations(self, events: List[AnalyticsEventDB]) -> List[float]:
-        """Calculate duration for each session"""
+        """calculate duration for each session"""
         session_events = {}
         
         for event in events:

@@ -1,5 +1,5 @@
 """
-Core Configuration - Application settings
+v 1.1 core configuration - application settings
 """
 
 import os
@@ -11,40 +11,37 @@ except ImportError:
 
 
 class Settings(BaseSettings):
-    """Application settings"""
+    """application settings"""
     
-    # Ollama settings
-    OLLAMA_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3.2:latest"
+    # openai settings
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-3.5-turbo"
+    OPENAI_BASE_URL: str = "https://api.openai.com/v1"
     
-    # Database settings
+    #  database settings
     DATABASE_URL: str = "sqlite:///data/lessons.db"
     
-    # API settings
+    # api settings
     API_PREFIX: str = "/api"
     DEBUG: bool = False
+    
+    # jwt settings
+    secret_key: str = "test-secret-key-change-in-production"
     
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = "ignore"  # Ignore extra environment variables
+        extra = "ignore"  
 
 
-# Global settings instance
+# global settings instance
 settings = Settings()
 
 
 def get_settings() -> Settings:
-    """Get application settings"""
+    """get application settings"""
     return settings
 
 
-# Load environment variables
+# load environment variables
 load_dotenv()
-
-# Print settings on startup
-if __name__ != "__main__":
-    print(f"Settings initialized:")
-    print(f"  OLLAMA_URL: {settings.OLLAMA_URL}")
-    print(f"  OLLAMA_MODEL: {settings.OLLAMA_MODEL}")
-    print(f"  DATABASE_URL: {settings.DATABASE_URL}")

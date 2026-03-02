@@ -1,5 +1,5 @@
 """
-Core Logging - Application logging configuration
+v 1.1 core logging - application logging configuration
 """
 
 import logging
@@ -8,13 +8,13 @@ from pathlib import Path
 
 
 def setup_logging():
-    """Setup application logging"""
+    """setup application logging"""
     
-    # Create logs directory
+    # create logs directory
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
-    # Configure logging
+    # configure logging
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -24,8 +24,8 @@ def setup_logging():
         ]
     )
     
-    # Set specific logger levels
+    # set specific logger levels
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("uvicorn").setLevel(logging.INFO)
     
-    print("Logging configured")
+    logging.info("Logging configured successfully")

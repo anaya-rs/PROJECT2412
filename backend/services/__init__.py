@@ -2,15 +2,15 @@
 Services Module - Orchestration and side effects
 """
 
-from .lesson_generation import LessonGenerator, LessonGenerationError
-from .lesson_runtime import LessonRuntimeService
+from .statewise_lesson_generator import StatewiseLessonGenerator, StatewiseGenerationError
 from .analytics_service import AnalyticsService
 from .job_service import JobService
+from .user_service import UserService
 
 __all__ = [
-    "LessonGenerator",
-    "LessonGenerationError",
-    "LessonRuntimeService",
+    "StatewiseLessonGenerator",
+    "StatewiseGenerationError",
     "AnalyticsService",
-    "JobService"
+    "JobService",
+    "UserService"
 ]

@@ -20,11 +20,16 @@ export default function LessonPlayer() {
   const [sessionState, setSessionState] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | number[] | null>(null);
   const [showWrongAnswer, setShowWrongAnswer] = useState(false);
 
   useEffect(() => {
     if (id) {
+      // Set auth token for testing
+      const testToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzcyNTI1MjExfQ.09cfMcZ53_fB6ze8Sf6jMjtV_777ezwURZ571OVesck';
+      if (!localStorage.getItem('authToken')) {
+        localStorage.setItem('authToken', testToken);
+      }
       initializeLesson(parseInt(id));
     }
   }, [id]);
@@ -54,20 +59,31 @@ export default function LessonPlayer() {
 
     try {
       setSubmitting(true);
-      const result = await apiService.submitAnswer(sessionId, { answer: selectedAnswer });
       
-      // Check if answer was correct
-      const isCorrect = selectedAnswer === sessionState.state.correct_answer;
+      // Submit answer with proper payload format
+      const result = await apiService.submitAnswer(sessionId, { 
+        type: 'answer', 
+        payload: { selected_option: selectedAnswer } 
+      });
       
-      if (isCorrect) {
+      console.log('Answer submitted, result:', result);
+      
+      // Handle different response statuses
+      if (result.result.status === 'retry') {
+        // Wrong answer, show feedback
+        setShowWrongAnswer(true);
+        setSessionState(result.result);
+      } else if (result.result.status === 'reveal_answer') {
+        // No attempts left, reveal answer
+        setShowWrongAnswer(true);
+        setSessionState(result.result);
+      } else {
+        // Correct answer or content state, advance
         setSessionState(result.result);
         setSelectedAnswer(null);
         setShowWrongAnswer(false);
-      } else {
-        // Show wrong answer feedback
-        setShowWrongAnswer(true);
-        // Don't advance to next state, let user try again
       }
+      
     } catch (error) {
       console.error('Failed to submit answer:', error);
     } finally {
@@ -75,15 +91,36 @@ export default function LessonPlayer() {
     }
   };
 
+  const handleOptionSelect = (index: number) => {
+    const currentState = sessionState?.state;
+    
+    if (currentState?.question_type === 'multiple_choice') {
+      // For multiple choice, toggle selection
+      const currentAnswers = Array.isArray(selectedAnswer) ? selectedAnswer : [];
+      const newAnswers = currentAnswers.includes(index)
+        ? currentAnswers.filter(i => i !== index)
+        : [...currentAnswers, index];
+      setSelectedAnswer(newAnswers);
+    } else {
+      // For single choice, replace selection
+      setSelectedAnswer(index);
+    }
+    
+    setShowWrongAnswer(false);
+  };
+
   const handleNext = async () => {
     if (!sessionId) return;
 
     try {
       setSubmitting(true);
+      console.log('🔍 [DEBUG] Submitting next action for session:', sessionId);
       const result = await apiService.submitNext(sessionId);
+      console.log('🔍 [DEBUG] API response:', result);
+      console.log('🔍 [DEBUG] Result data:', result.result);
       setSessionState(result.result);
     } catch (error) {
-      console.error('Failed to advance:', error);
+      console.error('❌ [DEBUG] Failed to advance:', error);
     } finally {
       setSubmitting(false);
     }
@@ -137,9 +174,34 @@ export default function LessonPlayer() {
   }
 
   const currentState = sessionState?.state;
+  console.log('🔍 [DEBUG] Current state:', currentState);
+  console.log('🔍 [DEBUG] Session state:', sessionState);
+  
   const isQuestion = currentState?.type === 'question';
   const isContent = currentState?.type === 'content';
   const isEndNotes = currentState?.type === 'end_notes';
+  
+  // Defensive check for undefined state
+  if (sessionState && !currentState && !sessionState.completed) {
+    console.error('❌ [DEBUG] Session state exists but current state is undefined!');
+    return (
+      <div className="p-6">
+        <Panel className="border-accent-orange">
+          <div className="text-center py-8">
+            <h2 className="font-heading font-semibold text-lg text-black mb-2">
+              Debug: State Error
+            </h2>
+            <p className="text-sm text-muted mb-4">
+              Session state exists but current state is undefined
+            </p>
+            <pre className="text-xs bg-gray-100 p-2 rounded">
+              {JSON.stringify(sessionState, null, 2)}
+            </pre>
+          </div>
+        </Panel>
+      </div>
+    );
+  }
 
   return (
       <div className="p-6 space-y-6">
@@ -201,33 +263,76 @@ export default function LessonPlayer() {
                   {currentState?.prompt}
                 </p>
                 
-                {currentState?.question_format === 'mcq' && currentState?.options && (
+                {currentState?.question_type && currentState?.options && (
                   <div className="space-y-2">
-                    {currentState.options.map((option: string, index: number) => (
-                      <button
-                        key={index}
-                        onClick={() => {
-                          setSelectedAnswer(index);
-                          setShowWrongAnswer(false);
-                        }}
-                        disabled={submitting}
-                        className={
-                          "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active " +
-                          (selectedAnswer === index
-                            ? 'border-black bg-accent-yellow'
-                            : 'border-black hover:bg-accent-yellow')
-                        }
-                      >
-                        {option}
-                      </button>
-                    ))}
+                    {currentState.question_type === 'multiple_choice' && (
+                      <p className="text-sm text-muted mb-2">
+                        Select all that apply:
+                      </p>
+                    )}
+                    {currentState.options.map((option: string, index: number) => {
+                      const isSelected = Array.isArray(selectedAnswer) ? selectedAnswer.includes(index) : selectedAnswer === index;
+                      const isCorrect = sessionState?.correct_answer === index || (Array.isArray(sessionState?.correct_answer) && sessionState.correct_answer.includes(index));
+                      const showCorrect = sessionState?.status === 'reveal_answer' || sessionState?.allow_next;
+                      const isWrong = isSelected && !isCorrect && showWrongAnswer;
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleOptionSelect(index)}
+                          disabled={submitting}
+                          className={
+                            "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active " +
+                            (showCorrect && isCorrect 
+                              ? 'border-green-500 bg-green-50' 
+                              : isWrong 
+                                ? 'border-red-500 bg-red-50 animate-shake' 
+                                : isSelected 
+                                  ? 'border-black bg-accent-yellow' 
+                                  : 'border-black hover:bg-accent-yellow')
+                          }
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
+                              showCorrect && isCorrect 
+                                ? 'border-green-500' 
+                                : isWrong 
+                                  ? 'border-red-500' 
+                                  : 'border-black'
+                            }`}>
+                              {isSelected && (
+                                <div className={`w-2 h-2 rounded-full ${
+                                  showCorrect && isCorrect 
+                                    ? 'bg-green-500' 
+                                    : isWrong 
+                                      ? 'bg-red-500' 
+                                      : 'bg-black'
+                                }`} />
+                              )}
+                              {showCorrect && isCorrect && !isSelected && (
+                                <div className="w-2 h-2 bg-green-500 rounded-full" />
+                              )}
+                            </div>
+                            {option}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
 
-                {showWrongAnswer && (
+                {showWrongAnswer && sessionState?.status === 'retry' && (
                   <div className="mt-4 p-3 border-2 border-red-500 bg-red-50 rounded-md">
                     <p className="text-red-700 font-medium text-sm">
                       Oops! Wrong answer. Try again!
+                    </p>
+                  </div>
+                )}
+
+                {sessionState?.status === 'reveal_answer' && (
+                  <div className="mt-4 p-3 border-2 border-green-500 bg-green-50 rounded-md">
+                    <p className="text-green-700 font-medium text-sm">
+                      The correct answer is: {currentState.options?.[sessionState.correct_answer as number] || sessionState.correct_answer}
                     </p>
                   </div>
                 )}
@@ -300,16 +405,31 @@ export default function LessonPlayer() {
           )}
           
           {isQuestion && (
-            <ControlButton
-              variant="primary"
-              onClick={handleAnswer}
-              disabled={selectedAnswer === null || submitting}
-              loading={submitting}
-              className="flex items-center gap-2"
-            >
-              Submit Answer
-              <ArrowRight className="w-4 h-4" />
-            </ControlButton>
+            <>
+              {sessionState?.status === 'reveal_answer' || sessionState?.allow_next ? (
+                <ControlButton
+                  variant="primary"
+                  onClick={handleNext}
+                  disabled={submitting}
+                  loading={submitting}
+                  className="flex items-center gap-2"
+                >
+                  Next
+                  <ArrowRight className="w-4 h-4" />
+                </ControlButton>
+              ) : (
+                <ControlButton
+                  variant="primary"
+                  onClick={handleAnswer}
+                  disabled={selectedAnswer === null || (Array.isArray(selectedAnswer) && selectedAnswer.length === 0) || submitting}
+                  loading={submitting}
+                  className="flex items-center gap-2"
+                >
+                  Submit Answer
+                  <ArrowRight className="w-4 h-4" />
+                </ControlButton>
+              )}
+            </>
           )}
           
           {isEndNotes && (

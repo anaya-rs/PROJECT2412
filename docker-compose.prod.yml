@@ -1,0 +1,165 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      # BuildKit optimizations for production
+      cache_from:
+        - type=registry,ref=myregistry/ai-lesson-backend:buildcache
+    image: ai-lesson-backend:latest
+    container_name: ai-lesson-backend-prod
+    ports:
+      - "5005:5005"
+    environment:
+      - DATABASE_URL=postgresql://project2412:${DB_PASSWORD:-securepassword}@postgres:5432/project2412
+      - JWT_SECRET=${JWT_SECRET}
+      - RAG_ENABLED=true
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen2.5:1.5b
+      - EMBEDDING_MODEL=text-embedding-3-small
+      - RETRIEVAL_TOP_K=5
+      - VERIFICATION_ENABLED=true
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Use named volumes in production (not bind mounts)
+      - backend_uploads:/app/uploads
+      - backend_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "app=ai-lesson,service=backend"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ai-lesson-frontend:latest
+    container_name: ai-lesson-frontend-prod
+    ports:
+      - "8080:80"
+    environment:
+      - VITE_API_URL=${API_URL:-http://localhost:5005}
+    depends_on:
+      - backend
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "app=ai-lesson,service=frontend"
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-lesson-postgres-prod
+    environment:
+      - POSTGRES_DB=project2412
+      - POSTGRES_USER=project2412
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-securepassword}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF8 --locale=C
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - postgres_backup:/backup
+    ports:
+      - "5432:5432"
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U project2412 -d project2412"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: 
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "max_connections=200"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ai-lesson-qdrant-prod
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai-lesson-ollama-prod
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+  postgres_backup:
+    driver: local
+  qdrant_data:
+    driver: local
+  ollama_data:
+    driver: local
+  backend_uploads:
+    driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  default:
+    name: ai-lesson-network-prod
+    driver: bridge

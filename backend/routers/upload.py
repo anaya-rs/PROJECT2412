@@ -1,5 +1,5 @@
 """
-Upload Router - File upload functionality
+v 1.1 upload router - File upload functionality
 """
 
 from fastapi import APIRouter, UploadFile, File, HTTPException
@@ -11,13 +11,13 @@ router = APIRouter(prefix="/api", tags=["upload"])
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     """
-    Mock file upload endpoint
-    In production, this would save the file and return file metadata
+    mock file upload endpoint
+    in production, this would save the file and return file metadata
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
     
-    # Mock file processing - just return file info
+    # mock file processing - just return file info
     content_bytes = await file.read()
     content_text = content_bytes.decode('utf-8', errors='ignore')
     

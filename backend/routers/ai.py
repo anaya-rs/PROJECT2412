@@ -1,12 +1,14 @@
 """
-AI Router - AI endpoints for lesson generation with explicit error handling
+AI Router
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+import asyncio
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from typing import Dict, Any
+from sqlalchemy.orm import Session
 from services.job_service import JobService
-from core.dependencies import get_current_db, verify_authorization
+from core.dependencies import get_db, verify_authorization
 
 
 logger = logging.getLogger(__name__)
@@ -15,9 +17,14 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 
 @router.post("/jobs")
-async def create_ai_job(payload: Dict[str, Any], db=Depends(get_current_db), user_id: int = Depends(verify_authorization)):
+async def create_ai_job(
+    payload: Dict[str, Any], 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db), 
+    user_id: int = Depends(verify_authorization)
+):
     """
-    Create an AI job and start background processing with explicit error handling
+    create an AI job and start background processing with explicit error handling
     """
     try:
         logger.info(f"Lesson generation request received - user_id: {user_id}")
@@ -50,6 +57,9 @@ async def create_ai_job(payload: Dict[str, Any], db=Depends(get_current_db), use
         
         logger.info(f"Job created successfully - job_id: {job_id}")
         
+        # Add background task to process the job
+        background_tasks.add_task(job_service.process_job_async, job_id, payload, user_id)
+        
         return {
             "jobId": job_id,
             "status": "queued",
@@ -67,9 +77,9 @@ async def create_ai_job(payload: Dict[str, Any], db=Depends(get_current_db), use
 
 
 @router.get("/jobs/{job_id}")
-async def get_ai_job(job_id: str, db=Depends(get_current_db), user_id: int = Depends(verify_authorization)):
+async def get_ai_job(job_id: str, db: Session = Depends(get_db), user_id: int = Depends(verify_authorization)):
     """
-    Get AI job status with explicit error handling
+    get AI job status with explicit error handling
     """
     try:
         logger.info(f"Job status request - job_id: {job_id}, user_id: {user_id}")
@@ -82,7 +92,7 @@ async def get_ai_job(job_id: str, db=Depends(get_current_db), user_id: int = Dep
             logger.error(error_msg)
             raise HTTPException(status_code=404, detail=error_msg)
         
-        # Verify user owns this job
+        # verify user owns this job
         if job["userId"] != user_id:
             error_msg = "Access denied: job belongs to different user"
             logger.error(f"Access denied - job_user: {job['userId']}, request_user: {user_id}")
@@ -90,7 +100,7 @@ async def get_ai_job(job_id: str, db=Depends(get_current_db), user_id: int = Dep
         
         logger.info(f"Job status retrieved - job_id: {job_id}, status: {job['status']}")
         
-        # Return proper response contract
+        # return proper response contract
         if job["status"] == "completed":
             return {
                 "jobId": job["id"],
@@ -110,7 +120,7 @@ async def get_ai_job(job_id: str, db=Depends(get_current_db), user_id: int = Dep
                 "stage": "generation_failed"
             }
         else:
-            # Running or queued
+            # running or queued
             return {
                 "jobId": job["id"],
                 "status": job["status"],
@@ -119,12 +129,10 @@ async def get_ai_job(job_id: str, db=Depends(get_current_db), user_id: int = Dep
             }
         
     except HTTPException:
-        # Re-raise HTTP exceptions (not found, access denied)
+        # re-raise HTTP exceptions (not found, access denied)
         raise
     except Exception as e:
-        # Catch any unexpected errors and surface them explicitly
+        # catch any unexpected errors and surface them explicitly
         error_msg = f"Unexpected error retrieving job: {str(e)}"
         logger.error(error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
-
-

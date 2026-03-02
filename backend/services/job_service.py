@@ -1,5 +1,5 @@
 """
-Job Service - Background job management with structured logging and explicit error handling
+v 1.1 Job Service - Background job management with structured logging and explicit error handling
 """
 
 import uuid
@@ -10,22 +10,22 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from models.job import JobDB
-from services.lesson_generation import LessonGenerator, LessonGenerationError
-from core import get_settings
+from services.openai_lesson_generator import OpenAILessonGenerator, StatewiseGenerationError
+from config import settings
 
 
 logger = logging.getLogger(__name__)
 
 
 class JobService:
-    """Service for managing background lesson generation jobs"""
+    """service for managing background lesson generation jobs"""
     
     def __init__(self, db_session: Session):
         self.db = db_session
         self.active_jobs = {}  # In-memory job tracking
     
     def create_job(self, user_id: int, payload: Dict[str, Any]) -> str:
-        """Create a new background job with structured logging"""
+        """create a new background job with structured logging"""
         try:
             job_id = str(uuid.uuid4())
             logger.info(f"Creating new job - job_id: {job_id}, user_id: {user_id}")
@@ -49,10 +49,7 @@ class JobService:
             
             logger.info(f"Job saved to database - job_id: {job_id}")
             
-            # Start background processing
-            logger.info(f"Starting background processing for job - job_id: {job_id}")
-            asyncio.create_task(self.process_job_async(job_id, payload))
-            
+            # Return job_id immediately - background processing will be handled by FastAPI
             logger.info(f"Job creation completed - job_id: {job_id}")
             return job_id
             
@@ -62,7 +59,7 @@ class JobService:
             raise Exception(error_msg)
     
     def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
-        """Get job status with structured logging"""
+        """get job status with structured logging"""
         try:
             logger.debug(f"Retrieving job status - job_id: {job_id}")
             
@@ -81,44 +78,50 @@ class JobService:
             logger.error(error_msg)
             raise Exception(error_msg)
     
-    async def process_job_async(self, job_id: str, payload: Dict[str, Any]):
-        """Process job in background with comprehensive logging and error handling"""
+    async def process_job_async(self, job_id: str, payload: Dict[str, Any], user_id: int):
+        """process job in background with comprehensive logging and error handling"""
         lesson_id = None
+        
+        # Create new database session for background task
+        from core.db import get_db_session
+        db = get_db_session()
         
         try:
             logger.info(f"Starting background job processing - job_id: {job_id}")
             
-            # Update status to running
-            self.update_job_status(job_id, "running", 10, "Processing lesson content...")
+            # update status to running
+            self.update_job_status(db, job_id, "running", 10, "Processing lesson content...")
             logger.info(f"Job status updated to running - job_id: {job_id}")
             
-            # Initialize lesson generator
-            settings = get_settings()
-            logger.info(f"Initializing lesson generator - model: {settings.OLLAMA_MODEL}")
+            # initialize lesson generator
+            logger.info(f"Initializing OpenAI lesson generator - model: {settings.openai_model}")
             
-            generator = LessonGenerator(
-                ollama_url=settings.OLLAMA_URL,
-                model=settings.OLLAMA_MODEL,
-                db_session=self.db
+            generator = OpenAILessonGenerator(
+                api_key=settings.openai_api_key,
+                model=settings.openai_model,
+                base_url=settings.openai_base_url,
+                db_session=db
             )
             
-            # Update progress
-            self.update_job_status(job_id, "running", 30, "Generating lesson with AI...")
+            # update progress
+            self.update_job_status(db, job_id, "running", 30, "Generating lesson with AI...")
             logger.info(f"Starting AI generation - job_id: {job_id}")
             
-            # Generate lesson
+            # generate lesson
             lesson_id = generator.generate_lesson(
                 content=payload["text"],
                 title=payload.get("title", "Generated Lesson"),
                 description=payload.get("description", ""),
                 duration_minutes=payload.get("duration", 30),
-                difficulty=payload.get("difficulty", "beginner")
+                difficulty=payload.get("difficulty", "beginner"),
+                user_id=user_id
             )
             
             logger.info(f"AI generation completed - job_id: {job_id}, lesson_id: {lesson_id}")
             
-            # Mark as completed
+            # mark as completed 
             self.update_job_status(
+                db, 
                 job_id, 
                 "completed", 
                 100, 
@@ -128,25 +131,28 @@ class JobService:
             
             logger.info(f"Job completed successfully - job_id: {job_id}, lesson_id: {lesson_id}")
             
-        except LessonGenerationError as e:
+        except StatewiseGenerationError as e:
             error_msg = f"Lesson generation failed: {str(e)}"
             logger.error(f"Job failed due to generation error - job_id: {job_id}, error: {error_msg}")
-            self.update_job_status(job_id, "failed", 0, error_msg)
+            self.update_job_status(db, job_id, "failed", 0, error_msg)
             
         except ValueError as e:
-            # Input validation errors
+            # input validation errors
             error_msg = f"Invalid input: {str(e)}"
             logger.error(f"Job failed due to validation error - job_id: {job_id}, error: {error_msg}")
-            self.update_job_status(job_id, "failed", 0, error_msg)
+            self.update_job_status(db, job_id, "failed", 0, error_msg)
             
         except Exception as e:
-            # Unexpected errors
+            # unexpected errors
             error_msg = f"Unexpected error during processing: {str(e)}"
             logger.error(f"Job failed due to unexpected error - job_id: {job_id}, error: {error_msg}")
-            self.update_job_status(job_id, "failed", 0, error_msg)
+            self.update_job_status(db, job_id, "failed", 0, error_msg)
+        finally:
+            # Always close the database session
+            db.close()
     
     def update_job_status(self, job_id: str, status: str, progress: int, message: str, lesson_id: int = None):
-        """Update job status in database with structured logging"""
+        """update job status in database with structured logging"""
         try:
             logger.debug(f"Updating job status - job_id: {job_id}, status: {status}, progress: {progress}")
             
@@ -168,4 +174,4 @@ class JobService:
         except Exception as e:
             error_msg = f"Failed to update job status {job_id}: {str(e)}"
             logger.error(error_msg)
-            # Don't raise here to avoid breaking the job processing flow
+            # don't raise here to avoid breaking the job processing flow

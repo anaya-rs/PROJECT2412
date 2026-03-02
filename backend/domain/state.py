@@ -1,9 +1,9 @@
 """
-Domain State Models - Pure logic, no database dependencies
+domain state models
 """
 
 from typing import List, Literal, Union
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class BaseState(BaseModel):
@@ -17,45 +17,29 @@ class ContentState(BaseState):
 
 
 class QuestionState(BaseState):
-    type: Literal["question"]
-    question_format: Literal["mcq", "short_answer"]
-    prompt: str = Field(..., min_length=10, max_length=300)
-    explanation: str = Field(..., min_length=1, max_length=500)
+    type: Literal["question"] = "question"
+    question_type: Literal["single_choice", "multiple_choice"]
+    prompt: str = Field(min_length=5)
+    options: List[str] = Field(min_length=2, max_length=8)
+    correct_answers: List[int] = Field(min_length=1)
+    explanation: str = Field(min_length=5)
 
-    # MCQ-only
-    options: List[str] | None = None
-    correct_answer: int | str
+    @model_validator(mode="after")
+    def validate_question(self):
+        # validate correct answer bounds
+        for idx in self.correct_answers:
+            if idx < 0 or idx >= len(self.options):
+                raise ValueError("correct answer index out of bounds")
 
-    @field_validator('options')
-    @classmethod
-    def validate_mcq_options(cls, v, info):
-        values = info.data if hasattr(info, 'data') else {}
-        if values.get('question_format') == 'mcq':
-            if not v or len(v) < 2:
-                raise ValueError("MCQ requires at least 2 options")
-        return v
+        # enforce single choice constraint
+        if self.question_type == "single_choice" and len(self.correct_answers) != 1:
+            raise ValueError("single choice must have exactly one correct answer")
 
-    @field_validator('correct_answer')
-    @classmethod
-    def validate_answer_type(cls, v, info):
-        values = info.data if hasattr(info, 'data') else {}
-        fmt = values.get('question_format')
-        if fmt == 'mcq' and not isinstance(v, int):
-            raise ValueError("MCQ correct_answer must be an index")
-        if fmt == 'short_answer' and not isinstance(v, str):
-            raise ValueError("short_answer requires string correct_answer")
-        return v
+        # enforce multiple choice constraint
+        if self.question_type == "multiple_choice" and len(self.correct_answers) < 1:
+            raise ValueError("multiple choice must have at least one correct answer")
 
-    @field_validator('correct_answer')
-    @classmethod
-    def validate_mcq_answer_bounds(cls, v, info):
-        values = info.data if hasattr(info, 'data') else {}
-        fmt = values.get('question_format')
-        options = values.get('options')
-        if fmt == 'mcq' and options is not None:
-            if v < 0 or v >= len(options):
-                raise ValueError("MCQ correct_answer index out of bounds")
-        return v
+        return self
 
 
 class EndNotesState(BaseState):
@@ -64,11 +48,11 @@ class EndNotesState(BaseState):
     key_takeaways: List[str] = Field(..., min_items=1, max_items=5)
 
 
-# Use discriminator for proper union validation
+# use discriminator for proper union validation
 AuthoredState = Union[ContentState, QuestionState, EndNotesState]
 
 
-# Domain Events (pure, no persistence)
+# domain events (pure, no persistence)
 class DomainEvent(BaseModel):
     event_type: Literal["enter", "answer", "retry", "advance", "complete"]
     payload: dict
