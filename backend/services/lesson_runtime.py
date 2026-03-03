@@ -102,6 +102,8 @@ class LessonRuntimeService:
             raise ValueError("Unauthorized access to session")
         
         print(f"🔍 [DEBUG] Session found: current_index={session_runtime.current_index}, attempts={session_runtime.attempts}")
+        print(f"🔍 [DEBUG] Session runtime type: {type(session_runtime)}")
+        print(f"🔍 [DEBUG] Session runtime dir: {[attr for attr in dir(session_runtime) if not attr.startswith('_')]}")
         
         # Get lesson data
         lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
@@ -146,9 +148,12 @@ class LessonRuntimeService:
             
             payload = action.get("payload", {})
             selected_option = payload.get("selected_option")
-            correct_option = current_state.get("correct_option")
+            correct_answers = current_state.get("correct_answers", [])
             
-            if selected_option == correct_option:
+            # Check if selected option is in correct answers
+            is_correct = selected_option in correct_answers
+            
+            if is_correct:
                 # Correct answer - move to next state
                 session_runtime.current_index += 1
                 session_runtime.attempts = 0
@@ -179,7 +184,7 @@ class LessonRuntimeService:
                         "attempts_left": 0,
                         "completed": False,
                         "status": "reveal_answer",
-                        "correct_answer": correct_option,
+                        "correct_answer": correct_answers[0] if correct_answers else None,
                         "allow_next": True
                     }
         else:
@@ -200,37 +205,43 @@ class LessonRuntimeService:
             session_runtime.completed_at = datetime.utcnow()
             self.db.commit()
             
-            return {
+            result = {
                 "state": None,
                 "progress": 1.0,
                 "attempts_left": 0,
                 "completed": True
             }
+            print(f"🔍 [DEBUG] Returning completed result: {result}")
+            return result
         
         # Get next state
         next_state = states_data[session_runtime.current_index]
         self.db.commit()
         
-        return {
+        result = {
             "state": next_state,
             "progress": session_runtime.current_index / len(states_data),
             "attempts_left": 3 - session_runtime.attempts,
             "completed": False
         }
+        print(f"🔍 [DEBUG] Returning normal result: {result}")
+        return result
     
     def _log_analytics_event(self, session_id: str, lesson_id: int, user_id: int, 
                            state_index: int, event_type: str, payload: Dict[str, Any]):
         """Log analytics event for session actions"""
         try:
             import json
+            import uuid
             
             analytics_event = AnalyticsEventDB(
+                id=str(uuid.uuid4()),
                 session_id=session_id,
                 lesson_id=lesson_id,
                 user_id=user_id,
                 state_index=state_index,
                 event_type=event_type,
-                payload=json.dumps(payload) if payload else None
+                payload=json.dumps(payload) if payload else "{}"
             )
             
             self.db.add(analytics_event)

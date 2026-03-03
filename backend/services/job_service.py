@@ -9,10 +9,9 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from sqlalchemy.orm import Session
 
+from core.config import settings
 from models.job import JobDB
 from services.openai_lesson_generator import OpenAILessonGenerator, StatewiseGenerationError
-from config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -94,12 +93,12 @@ class JobService:
             logger.info(f"Job status updated to running - job_id: {job_id}")
             
             # initialize lesson generator
-            logger.info(f"Initializing OpenAI lesson generator - model: {settings.openai_model}")
+            logger.info(f"Initializing OpenAI lesson generator - model: {settings.OPENAI_MODEL}")
             
             generator = OpenAILessonGenerator(
-                api_key=settings.openai_api_key,
-                model=settings.openai_model,
-                base_url=settings.openai_base_url,
+                api_key=settings.OPENAI_API_KEY,
+                model=settings.OPENAI_MODEL,
+                base_url=settings.OPENAI_BASE_URL,
                 db_session=db
             )
             
@@ -151,12 +150,12 @@ class JobService:
             # Always close the database session
             db.close()
     
-    def update_job_status(self, job_id: str, status: str, progress: int, message: str, lesson_id: int = None):
+    def update_job_status(self, db, job_id: str, status: str, progress: int, message: str, lesson_id: int = None):
         """update job status in database with structured logging"""
         try:
             logger.debug(f"Updating job status - job_id: {job_id}, status: {status}, progress: {progress}")
             
-            job = self.db.query(JobDB).filter(JobDB.id == job_id).first()
+            job = db.query(JobDB).filter(JobDB.id == job_id).first()
             if not job:
                 logger.error(f"Job not found for status update - job_id: {job_id}")
                 return
@@ -168,7 +167,7 @@ class JobService:
             if lesson_id:
                 job.lesson_id = lesson_id
             
-            self.db.commit()
+            db.commit()
             logger.debug(f"Job status updated successfully - job_id: {job_id}, status: {status}")
             
         except Exception as e:

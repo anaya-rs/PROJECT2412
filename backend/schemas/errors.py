@@ -27,7 +27,7 @@ class ErrorResponse(BaseModel):
     success: bool = Field(False, description="Always false for error responses")
     error: ErrorDetail = Field(..., description="Primary error information")
     validation_errors: Optional[List[ValidationError]] = Field(None, description="Detailed validation errors")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat(), description="Error timestamp")
     request_id: Optional[str] = Field(None, description="Request ID for tracing")
 
 
