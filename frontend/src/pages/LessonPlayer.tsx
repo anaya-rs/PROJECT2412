@@ -77,8 +77,12 @@ export default function LessonPlayer() {
         // No attempts left, reveal answer
         setShowWrongAnswer(true);
         setSessionState(result.result);
+      } else if (result.result.status === 'correct') {
+        // Correct answer, stay in question state with correct status
+        setSessionState(result.result);
+        setShowWrongAnswer(false);
       } else {
-        // Correct answer or content state, advance
+        // Content state or other, advance
         setSessionState(result.result);
         setSelectedAnswer(null);
         setShowWrongAnswer(false);
@@ -273,43 +277,55 @@ export default function LessonPlayer() {
                     {currentState.options.map((option: string, index: number) => {
                       const isSelected = Array.isArray(selectedAnswer) ? selectedAnswer.includes(index) : selectedAnswer === index;
                       const isCorrect = sessionState?.correct_answer === index || (Array.isArray(sessionState?.correct_answer) && sessionState.correct_answer.includes(index));
-                      const showCorrect = sessionState?.status === 'reveal_answer' || sessionState?.allow_next;
-                      const isWrong = isSelected && !isCorrect && showWrongAnswer;
+                      
+                      // Determine option styling based on status
+                      let optionClass = "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active ";
+                      
+                      if (sessionState?.status === 'correct') {
+                        // Correct answer state - highlight correct option green
+                        optionClass += isCorrect ? 'border-green-500 bg-green-50' : 'border-black hover:bg-accent-yellow';
+                      } else if (sessionState?.status === 'retry') {
+                        // Retry state - highlight selected wrong option red
+                        optionClass += isSelected ? 'border-red-500 bg-red-50 animate-shake' : 'border-black hover:bg-accent-yellow';
+                      } else if (sessionState?.status === 'reveal_answer') {
+                        // Reveal answer state - highlight correct green, selected wrong red
+                        if (isCorrect) {
+                          optionClass += 'border-green-500 bg-green-50';
+                        } else if (isSelected) {
+                          optionClass += 'border-red-500 bg-red-50';
+                        } else {
+                          optionClass += 'border-black hover:bg-accent-yellow';
+                        }
+                      } else {
+                        // Default state
+                        optionClass += isSelected ? 'border-black bg-accent-yellow' : 'border-black hover:bg-accent-yellow';
+                      }
                       
                       return (
                         <button
                           key={index}
                           onClick={() => handleOptionSelect(index)}
                           disabled={submitting}
-                          className={
-                            "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active " +
-                            (showCorrect && isCorrect 
-                              ? 'border-green-500 bg-green-50' 
-                              : isWrong 
-                                ? 'border-red-500 bg-red-50 animate-shake' 
-                                : isSelected 
-                                  ? 'border-black bg-accent-yellow' 
-                                  : 'border-black hover:bg-accent-yellow')
-                          }
+                          className={optionClass}
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
-                              showCorrect && isCorrect 
-                                ? 'border-green-500' 
-                                : isWrong 
-                                  ? 'border-red-500' 
-                                  : 'border-black'
+                              sessionState?.status === 'correct' && isCorrect ? 'border-green-500' :
+                              sessionState?.status === 'retry' && isSelected ? 'border-red-500' :
+                              sessionState?.status === 'reveal_answer' && isCorrect ? 'border-green-500' :
+                              sessionState?.status === 'reveal_answer' && isSelected ? 'border-red-500' :
+                              'border-black'
                             }`}>
                               {isSelected && (
                                 <div className={`w-2 h-2 rounded-full ${
-                                  showCorrect && isCorrect 
-                                    ? 'bg-green-500' 
-                                    : isWrong 
-                                      ? 'bg-red-500' 
-                                      : 'bg-black'
+                                  sessionState?.status === 'correct' && isCorrect ? 'bg-green-500' :
+                                  sessionState?.status === 'retry' ? 'bg-red-500' :
+                                  sessionState?.status === 'reveal_answer' && isCorrect ? 'bg-green-500' :
+                                  sessionState?.status === 'reveal_answer' && isSelected ? 'bg-red-500' :
+                                  'bg-black'
                                 }`} />
                               )}
-                              {showCorrect && isCorrect && !isSelected && (
+                              {sessionState?.status === 'reveal_answer' && isCorrect && !isSelected && (
                                 <div className="w-2 h-2 bg-green-500 rounded-full" />
                               )}
                             </div>
@@ -329,6 +345,14 @@ export default function LessonPlayer() {
                   </div>
                 )}
 
+                {sessionState?.status === 'correct' && (
+                  <div className="mt-4 p-3 border-2 border-green-500 bg-green-50 rounded-md">
+                    <p className="text-green-700 font-medium text-sm">
+                      Correct! Well done!
+                    </p>
+                  </div>
+                )}
+
                 {sessionState?.status === 'reveal_answer' && (
                   <div className="mt-4 p-3 border-2 border-green-500 bg-green-50 rounded-md">
                     <p className="text-green-700 font-medium text-sm">
@@ -337,7 +361,7 @@ export default function LessonPlayer() {
                   </div>
                 )}
 
-                {currentState?.explanation && !showWrongAnswer && (
+                {currentState?.explanation && sessionState?.explanation_visible && (
                   <div className="mt-4 text-muted text-sm">
                     {currentState.explanation}
                   </div>
@@ -406,7 +430,7 @@ export default function LessonPlayer() {
           
           {isQuestion && (
             <>
-              {sessionState?.status === 'reveal_answer' || sessionState?.allow_next ? (
+              {sessionState?.status === 'correct' || sessionState?.status === 'reveal_answer' ? (
                 <ControlButton
                   variant="primary"
                   onClick={handleNext}
