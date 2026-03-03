@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from domain.state import ContentState, QuestionState, EndNotesState, AuthoredState
 from domain.lesson import Lesson
 from domain.validation import validate_lesson_structure, DURATION_TEMPLATES
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

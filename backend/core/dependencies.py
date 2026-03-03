@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from contextlib import contextmanager
 from .db import get_db_session
 from utils.auth import verify_token
-from config import settings
+from .config import settings
 
 
 @contextmanager
@@ -37,8 +37,8 @@ def verify_authorization(authorization: Optional[str] = Header(None)):
     
     token = authorization.replace("Bearer ", "")
     try:
-        print(f"🔍 [DEBUG] Using secret_key: {settings.secret_key}")
-        payload = verify_token(token, settings.secret_key)
+        print(f"🔍 [DEBUG] Using secret_key: {settings.JWT_SECRET}")
+        payload = verify_token(token, settings.JWT_SECRET)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="invalid token")

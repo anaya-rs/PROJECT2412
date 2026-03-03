@@ -132,9 +132,14 @@ class LessonRuntimeService:
         
         # Handle different action types
         if action_type == "next":
-            # Only allow next from content states
+            # Allow next from content states
             if current_state.get("type") == "question":
-                raise ValueError("Cannot advance from question state without answering")
+                # Check if attempts are exhausted (3 wrong answers)
+                if session_runtime.attempts < 3:
+                    raise ValueError("Cannot advance from question state without answering or exhausting attempts")
+                else:
+                    # Allow next after 3 wrong attempts
+                    logger.info(f"Allowing next after 3 wrong attempts for session {session_id}")
             
             # Move to next state
             session_runtime.current_index += 1

@@ -8,13 +8,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 from contextlib import contextmanager
 
-from config import settings
+from .config import settings
 from models.base import Base
 
 
 # create database engine
 engine = create_engine(
-    settings.database_url,
+    settings.DATABASE_URL,
     poolclass=StaticPool,
     connect_args={
         "check_same_thread": False,

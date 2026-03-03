@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter
 from sqlalchemy import text
 from core.dependencies import get_db
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

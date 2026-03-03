@@ -11,7 +11,7 @@ from core.dependencies import get_db
 from schemas.auth import UserLogin, UserCreate, UserResponse, TokenResponse
 from services.user_service import UserService
 from utils.auth import create_access_token
-from config import settings
+from core.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -47,7 +47,7 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
         # generate access token
         access_token = create_access_token(
             data={"sub": str(mock_user.id), "role": mock_user.role},
-            secret_key=settings.secret_key,
+            secret_key=settings.JWT_SECRET,
             expires_delta=timedelta(hours=24)
         )
         
@@ -67,7 +67,7 @@ async def login(credentials: UserLogin, db: Session = Depends(get_db)):
     # generate access token
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role},
-        secret_key=settings.secret_key,
+        secret_key=settings.JWT_SECRET,
         expires_delta=timedelta(hours=24)
     )
     

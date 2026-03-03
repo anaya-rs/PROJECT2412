@@ -10,7 +10,7 @@ import json
 from core.dependencies import get_db, verify_authorization
 from services.statewise_lesson_generator import StatewiseLessonGenerator, StatewiseGenerationError
 from models.lesson import LessonDB
-from config import settings
+from core.config import settings
 
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
