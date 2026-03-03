@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5005/api';
+const API_BASE_URL = 'http://127.0.0.1:5005/api';
 
 export interface Lesson {
   id: number;
@@ -7,6 +7,7 @@ export interface Lesson {
   estimated_duration_minutes: number;
   states: AuthoredState[];
   created_at: string;
+  metadata?: Record<string, any>;
 }
 
 export interface AuthoredState {
@@ -27,9 +28,10 @@ export interface SessionState {
   progress: number;
   attempts_left: number;
   completed: boolean;
-  status?: 'retry' | 'reveal_answer' | 'success';
+  status?: 'retry' | 'reveal_answer' | 'success' | 'correct';
   message?: string;
   correct_answer?: string | number;
+  explanation_visible?: boolean;
   allow_next?: boolean;
 }
 

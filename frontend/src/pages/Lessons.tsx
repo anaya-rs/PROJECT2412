@@ -14,14 +14,14 @@ import {
   BookOpen,
   Filter,
 } from 'lucide-react';
-import { apiService, Lesson } from '@/lib/api';
+import { apiService, Lesson, AuthoredState } from '@/lib/api';
 
 function LessonCard({ lesson, onPlay, onDelete }: { 
   lesson: Lesson; 
   onPlay: () => void;
   onDelete: () => void;
 }) {
-  const questionCount = lesson.states?.filter((state: any) => state?.type === 'question').length || 0;
+  const questionCount = lesson.states?.filter((state: AuthoredState) => state?.type === 'question').length || 0;
   const duration = lesson.estimated_duration_minutes || 30;
 
   return (

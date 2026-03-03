@@ -162,12 +162,27 @@ class LessonRuntimeService:
             selected_option = payload.get("selected_option")
             correct_answers = current_state.get("correct_answers", [])
             
-            # Debug logging
-            logger.info(f"🔍 [ANSWER DEBUG] Selected: {selected_option}, Correct: {correct_answers}")
+            # Debug logging - COMPREHENSIVE
+            logger.info(f"🔍 [ANSWER DEBUG] Selected: {selected_option}")
+            logger.info(f"🔍 [ANSWER DEBUG] Selected type: {type(selected_option)}")
+            logger.info(f"🔍 [ANSWER DEBUG] Correct answers: {correct_answers}")
+            logger.info(f"🔍 [ANSWER DEBUG] Correct answers type: {type(correct_answers)}")
+            if correct_answers:
+                logger.info(f"🔍 [ANSWER DEBUG] First correct answer type: {type(correct_answers[0])}")
+            logger.info(f"🔍 [ANSWER DEBUG] Question options: {current_state.get('options', [])}")
             
-            # Check if selected option is in correct answers
-            is_correct = selected_option in correct_answers
-            logger.info(f"🔍 [ANSWER DEBUG] Is correct: {is_correct}")
+            # STANDARDIZED COMPARISON: Convert both to integers for index-based validation
+            try:
+                selected_index = int(selected_option) if selected_option is not None else None
+                correct_indices = [int(ans) for ans in correct_answers]
+                is_correct = selected_index in correct_indices
+                logger.info(f"🔍 [ANSWER DEBUG] Selected index: {selected_index}")
+                logger.info(f"🔍 [ANSWER DEBUG] Correct indices: {correct_indices}")
+                logger.info(f"🔍 [ANSWER DEBUG] Is correct: {is_correct}")
+                logger.info(f"🔍 [ANSWER DEBUG] Comparison result: {selected_index} in {correct_indices} = {is_correct}")
+            except (ValueError, TypeError) as e:
+                logger.error(f"🔍 [ANSWER DEBUG] Conversion error: {e}")
+                is_correct = False
             
             if is_correct:
                 # Correct answer - stay in current state with correct status

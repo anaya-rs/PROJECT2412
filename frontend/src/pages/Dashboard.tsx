@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { LucideIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiService, Lesson } from '@/lib/api';
@@ -27,7 +28,7 @@ function StatCard({
 }: {
   title: string;
   value: string | number;
-  icon: any;
+  icon: LucideIcon;
   trend?: string;
   color?: string;
 }) {

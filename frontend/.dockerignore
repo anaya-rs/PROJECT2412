@@ -54,3 +54,8 @@ docs/
 # OS
 Thumbs.db
 ehthumbs.db
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore

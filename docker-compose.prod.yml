@@ -55,7 +55,7 @@ services:
     ports:
       - "8080:80"
     environment:
-      - VITE_API_URL=${API_URL:-http://localhost:5005}
+      - VITE_API_URL=${API_URL:-http://backend:5005}
     depends_on:
       - backend
     restart: always

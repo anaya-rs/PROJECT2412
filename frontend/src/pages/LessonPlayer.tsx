@@ -17,7 +17,7 @@ export default function LessonPlayer() {
   const navigate = useNavigate();
   const [lesson, setLesson] = useState<Lesson | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [sessionState, setSessionState] = useState<any>(null);
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | number[] | null>(null);
@@ -26,7 +26,7 @@ export default function LessonPlayer() {
   useEffect(() => {
     if (id) {
       // Set auth token for testing
-      const testToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzcyNTI1MjExfQ.09cfMcZ53_fB6ze8Sf6jMjtV_777ezwURZ571OVesck';
+      const testToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwiZXhwIjoxNzcyNjI2MDY4fQ.Glpo7NyyDrtJCVeiInYqtgdcr9C2HClES7Z4oK6EgKs';
       if (!localStorage.getItem('authToken')) {
         localStorage.setItem('authToken', testToken);
       }
@@ -276,20 +276,22 @@ export default function LessonPlayer() {
                     )}
                     {currentState.options.map((option: string, index: number) => {
                       const isSelected = Array.isArray(selectedAnswer) ? selectedAnswer.includes(index) : selectedAnswer === index;
-                      const isCorrect = sessionState?.correct_answer === index || (Array.isArray(sessionState?.correct_answer) && sessionState.correct_answer.includes(index));
                       
-                      // Determine option styling based on status
+                      // Determine option styling based on status ONLY (no derived validation)
                       let optionClass = "w-full text-left border-2 rounded-md px-4 py-2 transition-all duration-base ease-standard btn-active ";
                       
                       if (sessionState?.status === 'correct') {
-                        // Correct answer state - highlight correct option green
-                        optionClass += isCorrect ? 'border-green-500 bg-green-50' : 'border-black hover:bg-accent-yellow';
+                        // Correct answer state - highlight selected option green
+                        optionClass += isSelected ? 'border-green-500 bg-green-50' : 'border-black hover:bg-accent-yellow';
                       } else if (sessionState?.status === 'retry') {
-                        // Retry state - highlight selected wrong option red
+                        // Retry state - highlight selected wrong option red with shake
                         optionClass += isSelected ? 'border-red-500 bg-red-50 animate-shake' : 'border-black hover:bg-accent-yellow';
                       } else if (sessionState?.status === 'reveal_answer') {
                         // Reveal answer state - highlight correct green, selected wrong red
-                        if (isCorrect) {
+                        // Use backend response for correct answer identification
+                        const isCorrectAnswer = sessionState?.correct_answer === index || 
+                                               (Array.isArray(sessionState?.correct_answer) && sessionState.correct_answer.includes(index));
+                        if (isCorrectAnswer) {
                           optionClass += 'border-green-500 bg-green-50';
                         } else if (isSelected) {
                           optionClass += 'border-red-500 bg-red-50';
@@ -297,7 +299,7 @@ export default function LessonPlayer() {
                           optionClass += 'border-black hover:bg-accent-yellow';
                         }
                       } else {
-                        // Default state
+                        // Default state - no validation feedback
                         optionClass += isSelected ? 'border-black bg-accent-yellow' : 'border-black hover:bg-accent-yellow';
                       }
                       
@@ -310,22 +312,22 @@ export default function LessonPlayer() {
                         >
                           <div className="flex items-center gap-3">
                             <div className={`w-4 h-4 border-2 rounded flex items-center justify-center ${
-                              sessionState?.status === 'correct' && isCorrect ? 'border-green-500' :
+                              sessionState?.status === 'correct' && isSelected ? 'border-green-500' :
                               sessionState?.status === 'retry' && isSelected ? 'border-red-500' :
-                              sessionState?.status === 'reveal_answer' && isCorrect ? 'border-green-500' :
+                              sessionState?.status === 'reveal_answer' && sessionState?.correct_answer === index ? 'border-green-500' :
                               sessionState?.status === 'reveal_answer' && isSelected ? 'border-red-500' :
                               'border-black'
                             }`}>
                               {isSelected && (
                                 <div className={`w-2 h-2 rounded-full ${
-                                  sessionState?.status === 'correct' && isCorrect ? 'bg-green-500' :
+                                  sessionState?.status === 'correct' && isSelected ? 'bg-green-500' :
                                   sessionState?.status === 'retry' ? 'bg-red-500' :
-                                  sessionState?.status === 'reveal_answer' && isCorrect ? 'bg-green-500' :
+                                  sessionState?.status === 'reveal_answer' && sessionState?.correct_answer === index ? 'bg-green-500' :
                                   sessionState?.status === 'reveal_answer' && isSelected ? 'bg-red-500' :
                                   'bg-black'
                                 }`} />
                               )}
-                              {sessionState?.status === 'reveal_answer' && isCorrect && !isSelected && (
+                              {sessionState?.status === 'reveal_answer' && sessionState?.correct_answer === index && !isSelected && (
                                 <div className="w-2 h-2 bg-green-500 rounded-full" />
                               )}
                             </div>

@@ -74,3 +74,8 @@ data/
 
 # Uploads
 uploads/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore

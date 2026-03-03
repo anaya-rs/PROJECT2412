@@ -1,10 +1,10 @@
-FROM node:18
+FROM node:18-alpine
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm install
+RUN npm ci --only=production
 
-EXPOSE 3000
+EXPOSE 80
 
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "preview"]

@@ -61,7 +61,7 @@ services:
       dockerfile: Dockerfile
     container_name: ai-lesson-backend
     ports:
-      - "5000:5000"
+      - "5005:5005"
     environment:
       - DATABASE_URL=postgresql://project2412:securepassword@postgres:5432/project2412
       - QDRANT_URL=http://qdrant:6333
@@ -95,7 +95,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - VITE_API_URL=http://localhost:5000
+      - VITE_API_URL=${API_URL:-http://backend:5005}
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
