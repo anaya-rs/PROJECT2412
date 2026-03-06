@@ -61,10 +61,20 @@ export default function LessonPlayer() {
       setSubmitting(true);
       
       // Submit answer with proper payload format
-      const result = await apiService.submitAnswer(sessionId, { 
+      const payloadData = { 
         type: 'answer', 
-        payload: { selected_option: selectedAnswer } 
-      });
+        payload: { 
+          selected_option: Array.isArray(selectedAnswer) 
+            ? selectedAnswer.map(Number) 
+            : Number(selectedAnswer) 
+        } 
+      };
+      
+      console.log('🚨 [FRONTEND DEBUG] Sending payload:', payloadData);
+      console.log('🚨 [FRONTEND DEBUG] selectedAnswer raw:', selectedAnswer);
+      console.log('🚨 [FRONTEND DEBUG] selectedAnswer type:', typeof selectedAnswer);
+      
+      const result = await apiService.submitAnswer(sessionId, payloadData);
       
       console.log('Answer submitted, result:', result);
       
@@ -96,6 +106,8 @@ export default function LessonPlayer() {
   };
 
   const handleOptionSelect = (index: number) => {
+    console.log('🚨 [FRONTEND DEBUG] Option selected - index:', index, 'type:', typeof index);
+    
     const currentState = sessionState?.state;
     
     if (currentState?.question_type === 'multiple_choice') {
@@ -105,9 +117,11 @@ export default function LessonPlayer() {
         ? currentAnswers.filter(i => i !== index)
         : [...currentAnswers, index];
       setSelectedAnswer(newAnswers);
+      console.log('🚨 [FRONTEND DEBUG] Multiple choice - new answers:', newAnswers);
     } else {
       // For single choice, replace selection
       setSelectedAnswer(index);
+      console.log('🚨 [FRONTEND DEBUG] Single choice - selected:', index);
     }
     
     setShowWrongAnswer(false);

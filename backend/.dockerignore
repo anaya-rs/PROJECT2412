@@ -1,81 +1,18 @@
-# Git
-.git
-.gitignore
-.gitattributes
-
-# Python
 __pycache__
 *.pyc
 *.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-.egg-info/
-*.egg
-.eggs/
-dist/
-build/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# IDE
-.vscode/
-.idea/
-.DS_Store
-*.swp
-*.swo
-*~
-
-# Testing
-test_*.py
-tests/
-.pytest_cache/
-
-# Environment files (use .env at runtime)
+*.egg-info
+.pytest_cache
+.env
 .env.local
-.env.development.local
-.env.test.local
-
-# Logs
-logs/
-*.log
-
-# Documentation
-*.md
-docs/
-
-# Temporary files
-*.tmp
-*.temp
-test-lesson.txt
-sample-upload.txt
-
-# Frontend (not needed in backend image)
-frontend/
-node_modules/
-
-# Scripts
-*.sh
-*.bat
-
-# Database files
+.git
+.gitignore
+.DS_Store
 *.db
-*.sqlite3
-
-# Cache
-.cache/
-
-# Data directory (created at runtime)
-data/
-
-# Uploads
-uploads/
-
-# Docker
-Dockerfile*
-docker-compose*
-.dockerignore
+data
+.venv
+venv
+node_modules
+README.md
+.editorconfig
+.pre-commit-config.yaml

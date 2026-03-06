@@ -171,7 +171,7 @@ class ApiService {
   }
 
   async submitAnswer(sessionId: string, answer: any): Promise<ActionResult> {
-    return this.post<ActionResult>(`/sessions/${sessionId}/answer`, { type: 'answer', payload: { answer } });
+    return this.post<ActionResult>(`/sessions/${sessionId}/answer`, answer);
   }
 
   async submitNext(sessionId: string, payload?: any): Promise<ActionResult> {

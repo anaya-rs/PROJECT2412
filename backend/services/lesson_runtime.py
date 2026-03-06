@@ -1,5 +1,5 @@
 """
-Lesson Runtime Service - Manages lesson sessions and state with database persistence
+lesson runtime service 
 """
 
 import logging
@@ -17,26 +17,26 @@ logger = logging.getLogger(__name__)
 
 
 class LessonRuntimeService:
-    """Service for managing lesson sessions and state transitions with database persistence"""
+    """service for managing lesson sessions and state transitions with database persistence"""
     
     def __init__(self, db: Session):
         self.db = db
     
     def start_session(self, lesson_id: int, user_id: int) -> str:
-        """Start a new lesson session with database persistence"""
+        """start a new lesson session with database persistence"""
         session_id = str(uuid.uuid4())
         
-        # Verify lesson exists
+        # verify lesson exists
         lesson = self.db.query(LessonDB).filter(LessonDB.id == lesson_id).first()
         if not lesson:
             raise ValueError(f"Lesson {lesson_id} not found")
         
-        # Create session in database
+        # create session in database
         session_runtime = LessonSessionRuntimeDB.create_new(session_id, lesson_id, user_id)
         self.db.add(session_runtime)
         self.db.commit()
         
-        # Log analytics event
+        # log analytics event
         self._log_analytics_event(session_id, lesson_id, user_id, 0, "start", {})
         
         logger.info(f"Started session {session_id} for lesson {lesson_id}, user {user_id}")
@@ -74,7 +74,8 @@ class LessonRuntimeService:
                 "state": None,
                 "progress": 1.0,
                 "attempts_left": 0,
-                "completed": True
+                "completed": True,
+                "status": "completed"
             }
         
         current_state = states_data[current_index]
@@ -83,14 +84,15 @@ class LessonRuntimeService:
             "state": current_state,
             "progress": current_index / len(states_data),
             "attempts_left": 3 - session_runtime.attempts,
-            "completed": False
+            "completed": False,
+            "status": None
         }
     
     def submit_action(self, session_id: str, user_id: int, action) -> Dict[str, Any]:
-        """Submit an action and update session state with analytics logging"""
+        """submit an action and update session state with analytics logging"""
         print(f"🔍 [DEBUG] submit_action called with session_id={session_id}, user_id={user_id}, action={action}")
         
-        # Get session from database
+        # session from database
         session_runtime = self.db.query(LessonSessionRuntimeDB).filter(
             LessonSessionRuntimeDB.id == session_id
         ).first()
@@ -124,7 +126,8 @@ class LessonRuntimeService:
                 "state": None,
                 "progress": 1.0,
                 "attempts_left": 0,
-                "completed": True
+                "completed": True,
+                "status": "completed"
             }
         
         current_state = states_data[current_index]
@@ -163,6 +166,9 @@ class LessonRuntimeService:
             correct_answers = current_state.get("correct_answers", [])
             
             # Debug logging - COMPREHENSIVE
+            logger.info(f"🔍 [ANSWER DEBUG] Action received: {action}")
+            logger.info(f"🔍 [ANSWER DEBUG] Payload type: {type(payload)}")
+            logger.info(f"🔍 [ANSWER DEBUG] Payload: {payload}")
             logger.info(f"🔍 [ANSWER DEBUG] Selected: {selected_option}")
             logger.info(f"🔍 [ANSWER DEBUG] Selected type: {type(selected_option)}")
             logger.info(f"🔍 [ANSWER DEBUG] Correct answers: {correct_answers}")
@@ -171,18 +177,69 @@ class LessonRuntimeService:
                 logger.info(f"🔍 [ANSWER DEBUG] First correct answer type: {type(correct_answers[0])}")
             logger.info(f"🔍 [ANSWER DEBUG] Question options: {current_state.get('options', [])}")
             
+            # CRITICAL DEBUG: Log the raw values before any conversion
+            logger.info(f"🚨 [ANSWER CRITICAL] session_id: {session_id}")
+            logger.info(f"🚨 [ANSWER CRITICAL] current_index: {current_index}")
+            logger.info(f"🚨 [ANSWER CRITICAL] selected_option raw: {selected_option}")
+            logger.info(f"🚨 [ANSWER CRITICAL] correct_answers raw: {correct_answers}")
+            logger.info(f"🚨 [ANSWER CRITICAL] question options with indices:")
+            for i, opt in enumerate(current_state.get('options', [])):
+                logger.info(f"🚨 [ANSWER CRITICAL]   {i}: {opt}")
+            
             # STANDARDIZED COMPARISON: Convert both to integers for index-based validation
             try:
-                selected_index = int(selected_option) if selected_option is not None else None
-                correct_indices = [int(ans) for ans in correct_answers]
-                is_correct = selected_index in correct_indices
-                logger.info(f"🔍 [ANSWER DEBUG] Selected index: {selected_index}")
+                # Handle both single choice and multiple choice answers
+                if isinstance(selected_option, list):
+                    selected_indices = [int(x) for x in selected_option if x is not None]
+                else:
+                    selected_indices = [int(selected_option)] if selected_option is not None else []
+                
+                # Ensure correct_answers is a list and convert to integers
+                if not isinstance(correct_answers, list):
+                    logger.error(f"🚨 [ANSWER CRITICAL] correct_answers is not a list: {correct_answers}")
+                    correct_answers = []
+                correct_indices = [int(ans) for ans in correct_answers if ans is not None]
+                
+                # Validate indices are within bounds
+                max_option_index = len(current_state.get('options', [])) - 1
+                if max_option_index >= 0:
+                    selected_indices = [idx for idx in selected_indices if 0 <= idx <= max_option_index]
+                    correct_indices = [idx for idx in correct_indices if 0 <= idx <= max_option_index]
+                else:
+                    # No options available, no valid answers
+                    selected_indices = []
+                    correct_indices = []
+                
+                # For multiple choice: all selected must be in correct answers AND all correct answers must be selected
+                if current_state.get("question_type") == "multiple_choice":
+                    is_correct = (set(selected_indices) == set(correct_indices))
+                else:
+                    # For single choice: selected must be in correct answers
+                    is_correct = any(idx in correct_indices for idx in selected_indices)
+                
+                logger.info(f"🔍 [ANSWER DEBUG] Selected indices: {selected_indices}")
                 logger.info(f"🔍 [ANSWER DEBUG] Correct indices: {correct_indices}")
+                logger.info(f"🔍 [ANSWER DEBUG] Question type: {current_state.get('question_type')}")
                 logger.info(f"🔍 [ANSWER DEBUG] Is correct: {is_correct}")
-                logger.info(f"🔍 [ANSWER DEBUG] Comparison result: {selected_index} in {correct_indices} = {is_correct}")
-            except (ValueError, TypeError) as e:
-                logger.error(f"🔍 [ANSWER DEBUG] Conversion error: {e}")
-                is_correct = False
+                
+                # ADDITIONAL VALIDATION: Double-check the comparison
+                if len(selected_indices) == 1 and len(correct_indices) == 1:
+                    direct_comparison = (selected_indices[0] == correct_indices[0])
+                    logger.info(f"🔍 [ANSWER DEBUG] Direct comparison: {selected_indices[0]} == {correct_indices[0]} = {direct_comparison}")
+                    if direct_comparison != is_correct:
+                        logger.error(f"🚨 [ANSWER CRITICAL] Comparison mismatch! direct={direct_comparison}, any_logic={is_correct}")
+                        # Use the direct comparison as fallback
+                        is_correct = direct_comparison
+                
+                # FINAL SAFETY CHECK: If no selected indices or no correct indices, mark as incorrect
+                if not selected_indices or not correct_indices:
+                    logger.warning(f"🔍 [ANSWER DEBUG] No valid indices - selected: {selected_indices}, correct: {correct_indices}")
+                    is_correct = False
+                
+            except Exception as e:
+                logger.error(f"� [ANSWER CRITICAL] invalid answer format - selected_option={selected_option} error={e}")
+                logger.error(f"� [ANSWER CRITICAL] This is likely a frontend bug sending wrong data type!")
+                raise ValueError(f"Invalid answer format received: selected_option={selected_option} (type: {type(selected_option)})")
             
             if is_correct:
                 # Correct answer - stay in current state with correct status
@@ -200,7 +257,7 @@ class LessonRuntimeService:
                     "completed": False,
                     "status": "correct",
                     "explanation_visible": True,
-                    "correct_answer": correct_answers[0] if correct_answers else None,
+                    "correct_answer": int(correct_answers[0]) if correct_answers else None,
                     "feedback": "Correct!"
                 }
             else:
@@ -239,7 +296,7 @@ class LessonRuntimeService:
                         "completed": False,
                         "status": "reveal_answer",
                         "explanation_visible": True,
-                        "correct_answer": correct_answers[0] if correct_answers else None,
+                        "correct_answer": int(correct_answers[0]) if correct_answers else None,
                         "feedback": "No attempts left"
                     }
         else:
@@ -265,7 +322,8 @@ class LessonRuntimeService:
                 "progress": 1.0,
                 "attempts_left": 0,
                 "completed": True,
-                "explanation_visible": False
+                "explanation_visible": False,
+                "status": "completed"
             }
             print(f"🔍 [DEBUG] Returning completed result: {result}")
             return result
@@ -279,7 +337,8 @@ class LessonRuntimeService:
             "progress": session_runtime.current_index / len(states_data),
             "attempts_left": 3 - session_runtime.attempts,
             "completed": False,
-            "explanation_visible": False
+            "explanation_visible": False,
+            "status": "content"
         }
         print(f"🔍 [DEBUG] Returning normal result: {result}")
         return result
@@ -296,7 +355,7 @@ class LessonRuntimeService:
             if not session_runtime:
                 return {}
             
-            # Get lesson states
+            # get lesson states
             lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
             if not lesson:
                 return {}
@@ -309,7 +368,7 @@ class LessonRuntimeService:
             
             current_state = states_data[current_index]
             
-            # Determine status based on attempts and state type
+            # determine status based on attempts and state type
             if current_state.get("type") == "question":
                 if session_runtime.attempts == 0:
                     return {"status": "pending"}
@@ -326,7 +385,7 @@ class LessonRuntimeService:
     
     def _log_analytics_event(self, session_id: str, lesson_id: int, user_id: int, 
                            state_index: int, event_type: str, payload: Dict[str, Any]):
-        """Log analytics event for session actions"""
+        """log analytics event for session actions"""
         try:
             import json
             import uuid
@@ -342,9 +401,6 @@ class LessonRuntimeService:
             )
             
             self.db.add(analytics_event)
-            # Note: Don't commit here to avoid interfering with main transaction
-            # The calling method should handle the commit
             
         except Exception as e:
             logger.error(f"Failed to log analytics event: {e}")
-            # Don't raise - analytics failures shouldn't break the main flow
