@@ -46,34 +46,6 @@ async def database_health(db = get_db()):
             "error": str(e)
         }
 
-@router.get("/ollama")
-async def ollama_health():
-    """Check Ollama connectivity"""
-    try:
-        import requests
-        response = requests.get(f"{settings.ollama_url}/api/tags", timeout=5)
-        
-        if response.status_code == 200:
-            models = response.json().get("models", [])
-            return {
-                "status": "healthy",
-                "ollama": "connected",
-                "models": [model["name"] for model in models]
-            }
-        else:
-            return {
-                "status": "unhealthy",
-                "ollama": "api_error",
-                "status_code": response.status_code
-            }
-    except Exception as e:
-        logger.error(f"Ollama health check failed: {e}")
-        return {
-            "status": "unhealthy",
-            "ollama": "disconnected",
-            "error": str(e)
-        }
-
 @router.get("/services")
 async def services_health():
     """Check all core services"""

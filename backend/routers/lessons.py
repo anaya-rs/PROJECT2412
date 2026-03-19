@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 import json
 
 from core.dependencies import get_db, verify_authorization
-from services.statewise_lesson_generator import StatewiseLessonGenerator, StatewiseGenerationError
+from services.openai_lesson_generator import OpenAILessonGenerator, StatewiseGenerationError
 from models.lesson import LessonDB
 from core.config import settings
 
@@ -108,9 +108,12 @@ async def generate_lesson(
         raise HTTPException(status_code=400, detail="Duration must be 5, 15, or 30 minutes")
     
     try:
-        generator = StatewiseLessonGenerator(
-            ollama_url=settings.ollama_url,
-            model=settings.ollama_model,
+        from services.openai_lesson_generator import OpenAILessonGenerator, StatewiseGenerationError
+        
+        generator = OpenAILessonGenerator(
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL,
+            base_url=settings.OPENAI_BASE_URL,
             db_session=db
         )
         

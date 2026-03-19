@@ -9,6 +9,8 @@ import {
   Home,
   Trophy,
   BookOpen,
+  Lightbulb,
+  SkipForward,
 } from 'lucide-react';
 import { apiService, Lesson, SessionState, AuthoredState } from '@/lib/api';
 
@@ -22,6 +24,8 @@ export default function LessonPlayer() {
   const [submitting, setSubmitting] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | number[] | null>(null);
   const [showWrongAnswer, setShowWrongAnswer] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const [hintText, setHintText] = useState<string>('');
 
   useEffect(() => {
     if (id) {
@@ -137,8 +141,47 @@ export default function LessonPlayer() {
       console.log('🔍 [DEBUG] API response:', result);
       console.log('🔍 [DEBUG] Result data:', result.result);
       setSessionState(result.result);
+      setShowHint(false);
+      setHintText('');
     } catch (error) {
       console.error('❌ [DEBUG] Failed to advance:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleHint = async () => {
+    if (!sessionId) return;
+
+    try {
+      setSubmitting(true);
+      console.log('🔍 [DEBUG] Requesting hint for session:', sessionId);
+      const result = await apiService.getHint(sessionId);
+      console.log('🔍 [DEBUG] Hint response:', result);
+      setSessionState(result.result);
+      setShowHint(true);
+      setHintText(result.result.feedback || 'Hint available');
+    } catch (error) {
+      console.error('❌ [DEBUG] Failed to get hint:', error);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSkip = async () => {
+    if (!sessionId) return;
+
+    try {
+      setSubmitting(true);
+      console.log('🔍 [DEBUG] Skipping question for session:', sessionId);
+      const result = await apiService.skipQuestion(sessionId);
+      console.log('🔍 [DEBUG] Skip response:', result);
+      setSessionState(result.result);
+      setShowHint(false);
+      setHintText('');
+      setSelectedAnswer(null);
+    } catch (error) {
+      console.error('❌ [DEBUG] Failed to skip:', error);
     } finally {
       setSubmitting(false);
     }
@@ -353,6 +396,14 @@ export default function LessonPlayer() {
                   </div>
                 )}
 
+                {showHint && (
+                  <div className="mt-4 p-3 border-2 border-blue-500 bg-blue-50 rounded-md">
+                    <p className="text-blue-700 font-medium text-sm">
+                      💡 {hintText}
+                    </p>
+                  </div>
+                )}
+
                 {showWrongAnswer && sessionState?.status === 'retry' && (
                   <div className="mt-4 p-3 border-2 border-red-500 bg-red-50 rounded-md">
                     <p className="text-red-700 font-medium text-sm">
@@ -446,6 +497,30 @@ export default function LessonPlayer() {
           
           {isQuestion && (
             <>
+              <div className="flex gap-2">
+                <ControlButton
+                  variant="secondary"
+                  onClick={handleHint}
+                  disabled={submitting}
+                  loading={submitting}
+                  className="flex items-center gap-2"
+                >
+                  <Lightbulb className="w-4 h-4" />
+                  Hint
+                </ControlButton>
+                
+                <ControlButton
+                  variant="secondary"
+                  onClick={handleSkip}
+                  disabled={submitting}
+                  loading={submitting}
+                  className="flex items-center gap-2"
+                >
+                  <SkipForward className="w-4 h-4" />
+                  Skip
+                </ControlButton>
+              </div>
+              
               {sessionState?.status === 'correct' || sessionState?.status === 'reveal_answer' ? (
                 <ControlButton
                   variant="primary"

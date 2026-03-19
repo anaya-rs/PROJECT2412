@@ -14,14 +14,10 @@ services:
       PYTHONDONTWRITEBYTECODE: 1
       JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      USE_LOCAL_LLM: ${USE_LOCAL_LLM:-true}
-      OLLAMA_URL: ${OLLAMA_URL:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      USE_LOCAL_LLM: ${USE_LOCAL_LLM:-false}
     volumes:
       - ./backend:/app
       - /app/__pycache__
-    depends_on:
-      - ollama
     networks:
       - lesson-network
     restart: unless-stopped
@@ -58,6 +54,11 @@ services:
         - action: sync
           path: ./frontend/src
           target: /app/src
+          ignore:
+            - __pycache__
+            - "*.pyc"
+            - ".pytest_cache"
+            - "*.db"
         - action: sync
           path: ./frontend/public
           target: /app/public
@@ -65,28 +66,8 @@ services:
           path: ./frontend/package.json
           target: /app/package.json
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: lesson-creator-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      OLLAMA_NUM_GPU: 0
-    networks:
-      - lesson-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
 networks:
   lesson-network:
     driver: bridge
 
-volumes:
-  ollama_data:
+volumes: {}

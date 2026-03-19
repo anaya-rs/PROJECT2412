@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 WORKDIR /build
 
 # Copy package files
-COPY package*.json bun.lockb* ./
+COPY package*.json ./
 
 # Copy source code
 COPY src ./src

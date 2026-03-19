@@ -18,28 +18,27 @@ logger = logging.getLogger(__name__)
 
 
 class LessonRuntimeService:
-    """Service for managing lesson runtime and session state"""
+    """service for managing lesson sessions and state transitions with database persistence"""
     
     def __init__(self, db: Session):
         self.db = db
     
     def start_session(self, lesson_id: int, user_id: int) -> str:
-        """Start a new lesson session"""
+        """start a new lesson session with database persistence"""
         session_id = str(uuid.uuid4())
         
-        session_runtime = LessonSessionRuntimeDB(
-            id=session_id,
-            lesson_id=lesson_id,
-            user_id=user_id,
-            current_index=0,
-            attempts=0,
-            started_at=datetime.utcnow(),
-            last_active_at=datetime.utcnow(),
-            session_data={}
-        )
+        # verify lesson exists
+        lesson = self.db.query(LessonDB).filter(LessonDB.id == lesson_id).first()
+        if not lesson:
+            raise ValueError(f"Lesson {lesson_id} not found")
         
+        # create session in database
+        session_runtime = LessonSessionRuntimeDB.create_new(session_id, lesson_id, user_id)
         self.db.add(session_runtime)
         self.db.commit()
+        
+        # log analytics event
+        self._log_analytics_event(session_id, lesson_id, user_id, 0, "start", {})
         
         logger.info(f"Started session {session_id} for lesson {lesson_id}, user {user_id}")
         return session_id
@@ -121,9 +120,10 @@ class LessonRuntimeService:
         except json.JSONDecodeError:
             raise ValueError(f"Invalid lesson states data for lesson {session_runtime.lesson_id}")
         
-        # Get current state
+        # Get current state based on current_index
         current_index = session_runtime.current_index
         if current_index >= len(states_data):
+            # Lesson completed
             return {
                 "state": None,
                 "progress": 1.0,
@@ -158,6 +158,8 @@ class LessonRuntimeService:
             raise ValueError("Unauthorized access to session")
         
         print(f"🔍 [DEBUG] Session found: current_index={session_runtime.current_index}, attempts={session_runtime.attempts}")
+        print(f"🔍 [DEBUG] Session runtime type: {type(session_runtime)}")
+        print(f"🔍 [DEBUG] Session runtime dir: {[attr for attr in dir(session_runtime) if not attr.startswith('_')]}")
         
         # Get lesson data
         lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
@@ -185,36 +187,34 @@ class LessonRuntimeService:
         current_state = states_data[current_index]
         action_type = action.get("type", "unknown")
         
-        print(f"🔍 [DEBUG] About to handle action_type: {action_type}")
-        print(f"🔍 [DEBUG] Current state type: {current_state.get('type')}")
-        
         # Handle different action types
         if action_type == "next":
-            print(f"🔍 [DEBUG] Entering next action handler")
+            logger.info(f"🔍 [NEXT DEBUG] Processing next action for session {session_id}")
+            logger.info(f"🔍 [NEXT DEBUG] Current state type: {current_state.get('type')}")
             
             # Allow next from content states
             if current_state.get("type") == "question":
-                print(f"🔍 [DEBUG] In question state, checking answer status")
+                logger.info(f"🔍 [NEXT DEBUG] In question state, checking answer status")
                 # For question states, check if we have a correct answer or exhausted attempts
                 # Check session data for last answer status
                 if not session_runtime.session_data:
                     session_runtime.session_data = {}
                 
                 last_answer_status = session_runtime.session_data.get("last_answer_status")
-                print(f"🔍 [DEBUG] Last answer status: {last_answer_status}")
+                logger.info(f"🔍 [NEXT DEBUG] Last answer status: {last_answer_status}")
                 
                 # Allow next only if status is correct or reveal_answer (attempts exhausted)
                 if last_answer_status not in ["correct", "reveal_answer"]:
                     error_msg = "Cannot advance from question state without correct answer or exhausted attempts"
-                    print(f"🔍 [DEBUG] {error_msg}")
+                    logger.error(f"🔍 [NEXT DEBUG] {error_msg}")
                     raise ValueError(error_msg)
                 else:
-                    print(f"🔍 [DEBUG] Allowing next after {last_answer_status}")
+                    logger.info(f"🔍 [NEXT DEBUG] Allowing next after {last_answer_status} for session {session_id}")
             else:
-                print(f"🔍 [DEBUG] In content state, allowing next")
+                logger.info(f"🔍 [NEXT DEBUG] In content state, allowing next")
             
             # Move to next state
-            print(f"🔍 [DEBUG] Moving from index {session_runtime.current_index} to {session_runtime.current_index + 1}")
+            logger.info(f"🔍 [NEXT DEBUG] Moving from index {session_runtime.current_index} to {session_runtime.current_index + 1}")
             session_runtime.current_index += 1
             session_runtime.attempts = 0  # Reset attempts for new state
             session_runtime.last_active_at = datetime.utcnow()
@@ -224,15 +224,15 @@ class LessonRuntimeService:
                 del session_runtime.session_data["last_answer_status"]
             
             # Commit the changes
-            print(f"🔍 [DEBUG] Committing changes to database")
+            logger.info(f"🔍 [NEXT DEBUG] Committing changes to database")
             self.db.commit()
             
             # Return the next state
             next_index = session_runtime.current_index
-            print(f"🔍 [DEBUG] Next index: {next_index}, total states: {len(states_data)}")
+            logger.info(f"🔍 [NEXT DEBUG] Next index: {next_index}, total states: {len(states_data)}")
             
             if next_index >= len(states_data):
-                print(f"🔍 [DEBUG] Lesson completed")
+                logger.info(f"🔍 [NEXT DEBUG] Lesson completed")
                 return {
                     "state": None,
                     "progress": 1.0,
@@ -242,7 +242,7 @@ class LessonRuntimeService:
                 }
             else:
                 next_state = states_data[next_index]
-                print(f"🔍 [DEBUG] Returning next state: {next_state.get('type')}")
+                logger.info(f"🔍 [NEXT DEBUG] Returning next state: {next_state.get('type')}")
                 return {
                     "state": next_state,
                     "progress": next_index / len(states_data),
@@ -251,6 +251,77 @@ class LessonRuntimeService:
                     "status": None
                 }
         
+        # Get current state
+        current_index = session_runtime.current_index
+        if current_index >= len(states_data):
+            return {
+                "state": None,
+                "progress": 1.0,
+                "attempts_left": 0,
+                "completed": True,
+                "status": "completed"
+            }
+        
+        current_state = states_data[current_index]
+        action_type = action.get("type", "unknown")
+        
+        # Handle different action types
+        if action_type == "next":
+            logger.info(f"🔍 [NEXT DEBUG] Processing next action for session {session_id}")
+            logger.info(f"🔍 [NEXT DEBUG] Current state type: {current_state.get('type')}")
+            
+            # Allow next from content states
+            if current_state.get("type") == "question":
+                logger.info(f"🔍 [NEXT DEBUG] In question state, checking answer status")
+                # For question states, check if we have a correct answer or exhausted attempts
+                # Check session data for last answer status
+                if not session_runtime.session_data:
+                    session_runtime.session_data = {}
+                
+                last_answer_status = session_runtime.session_data.get("last_answer_status")
+                logger.info(f"🔍 [NEXT DEBUG] Last answer status: {last_answer_status}")
+                
+                # Allow next only if status is correct or reveal_answer (attempts exhausted)
+                if last_answer_status not in ["correct", "reveal_answer"]:
+                    error_msg = "Cannot advance from question state without correct answer or exhausted attempts"
+                    logger.error(f"🔍 [NEXT DEBUG] {error_msg}")
+                    raise ValueError(error_msg)
+                else:
+                    logger.info(f"🔍 [NEXT DEBUG] Allowing next after {last_answer_status} for session {session_id}")
+            else:
+                logger.info(f"🔍 [NEXT DEBUG] In content state, allowing next")
+            
+            # Move to next state
+            logger.info(f"🔍 [NEXT DEBUG] Moving from index {session_runtime.current_index} to {session_runtime.current_index + 1}")
+            session_runtime.current_index += 1
+            session_runtime.attempts = 0  # Reset attempts for new state
+            session_runtime.last_active_at = datetime.utcnow()
+            
+            # Clear the last answer status when advancing
+            if session_runtime.session_data and "last_answer_status" in session_runtime.session_data:
+                del session_runtime.session_data["last_answer_status"]
+            
+            # Commit the changes
+            logger.info(f"🔍 [NEXT DEBUG] Committing changes to database")
+            self.db.commit()
+            
+            # Return the next state
+            next_index = session_runtime.current_index
+            logger.info(f"🔍 [NEXT DEBUG] Next index: {next_index}, total states: {len(states_data)}")
+            
+            if next_index >= len(states_data):
+                logger.info(f"🔍 [NEXT DEBUG] Lesson completed")
+                return {
+                    "state": None,
+                    "progress": 1.0,
+                    "attempts_left": 0,
+                    "completed": True,
+                    "status": "completed"
+                }
+            else:
+                next_state = states_data[next_index]
+                logger.info(f"🔍 [NEXT DEBUG] Returning next state: {next_state.get('type')}")
+            
         elif action_type == "answer":
             # Handle question answers
             if current_state.get("type") != "question":
@@ -260,60 +331,142 @@ class LessonRuntimeService:
             selected_option = payload.get("selected_option")
             correct_answers = current_state.get("correct_answers", [])
             
-            # Check if answer is correct
-            is_correct = False
-            if isinstance(selected_option, list):
-                # Multiple choice
-                is_correct = set(selected_option) == set(correct_answers)
-            else:
-                # Single choice
-                is_correct = selected_option in correct_answers
+            # Debug logging - COMPREHENSIVE
+            logger.info(f" [ANSWER DEBUG] Action received: {action}")
+            logger.info(f" [ANSWER DEBUG] Payload type: {type(payload)}")
+            logger.info(f" [ANSWER DEBUG] Payload: {payload}")
+            logger.info(f" [ANSWER DEBUG] Selected: {selected_option}")
+            logger.info(f" [ANSWER DEBUG] Selected type: {type(selected_option)}")
+            logger.info(f" [ANSWER DEBUG] Correct answers: {correct_answers}")
+            logger.info(f" [ANSWER DEBUG] Correct answers type: {type(correct_answers)}")
+            if correct_answers:
+                logger.info(f" [ANSWER DEBUG] First correct answer type: {type(correct_answers[0])}")
+            logger.info(f" [ANSWER DEBUG] Question options: {current_state.get('options', [])}")
             
-            session_runtime.attempts += 1
+            # CRITICAL DEBUG: Log of raw values before any conversion
+            logger.info(f" [ANSWER CRITICAL] session_id: {session_id}")
+            logger.info(f" [ANSWER CRITICAL] current_index: {current_index}")
+            logger.info(f" [ANSWER CRITICAL] selected_option raw: {selected_option}")
+            logger.info(f" [ANSWER CRITICAL] correct_answers raw: {correct_answers}")
+            logger.info(f" [ANSWER CRITICAL] question options with indices:")
+            for i, opt in enumerate(current_state.get('options', [])):
+                logger.info(f" [ANSWER CRITICAL]   {i}: {opt}")
             
-            if not session_runtime.session_data:
-                session_runtime.session_data = {}
+            # STANDARDIZED COMPARISON: Convert both to integers for index-based validation
+            try:
+                # Handle both single choice and multiple choice answers
+                if isinstance(selected_option, list):
+                    selected_indices = [int(x) for x in selected_option if x is not None]
+                else:
+                    selected_indices = [int(selected_option)] if selected_option is not None else []
+                
+                # Ensure correct_answers is a list and convert to integers
+                if not isinstance(correct_answers, list):
+                    logger.error(f" [ANSWER CRITICAL] correct_answers is not a list: {correct_answers}")
+                    correct_answers = []
+                correct_indices = [int(ans) for ans in correct_answers if ans is not None]
+                
+                # Validate indices are within bounds
+                max_option_index = len(current_state.get('options', [])) - 1
+                if max_option_index >= 0:
+                    selected_indices = [idx for idx in selected_indices if 0 <= idx <= max_option_index]
+                    correct_indices = [idx for idx in correct_indices if 0 <= idx <= max_option_index]
+                else:
+                    # No options available, no valid answers
+                    selected_indices = []
+                    correct_indices = []
+                
+                # For multiple choice: all selected must be in correct answers AND all correct answers must be selected
+                if current_state.get("question_type") == "multiple_choice":
+                    is_correct = (set(selected_indices) == set(correct_indices))
+                else:
+                    # For single choice: selected must be in correct answers
+                    is_correct = any(idx in correct_indices for idx in selected_indices)
+                
+                logger.info(f" [ANSWER DEBUG] Selected indices: {selected_indices}")
+                logger.info(f" [ANSWER DEBUG] Correct indices: {correct_indices}")
+                logger.info(f" [ANSWER DEBUG] Question type: {current_state.get('question_type')}")
+                logger.info(f" [ANSWER DEBUG] Is correct: {is_correct}")
+                
+                # ADDITIONAL VALIDATION: Double-check the comparison
+                if len(selected_indices) == 1 and len(correct_indices) == 1:
+                    direct_comparison = (selected_indices[0] == correct_indices[0])
+                    logger.info(f" [ANSWER DEBUG] Direct comparison: {selected_indices[0]} == {correct_indices[0]} = {direct_comparison}")
+                    if direct_comparison != is_correct:
+                        logger.error(f" [ANSWER CRITICAL] Comparison mismatch! direct={direct_comparison}, any_logic={is_correct}")
+                        # Use the direct comparison as fallback
+                        is_correct = direct_comparison
+                
+                # FINAL SAFETY CHECK: If no selected indices or no correct indices, mark as incorrect
+                if not selected_indices or not correct_indices:
+                    logger.warning(f" [ANSWER DEBUG] No valid indices - selected: {selected_indices}, correct: {correct_indices}")
+                    is_correct = False
+                
+            except Exception as e:
+                logger.error(f" [ANSWER CRITICAL] invalid answer format - selected_option={selected_option} error={e}")
+                logger.error(f" [ANSWER CRITICAL] This is likely a frontend bug sending wrong data type!")
+                raise ValueError(f"Invalid answer format received: selected_option={selected_option} (type: {type(selected_option)})")
             
             if is_correct:
+                # Correct answer - stay in current state with correct status
+                # Store status in session data for next action validation
+                if not session_runtime.session_data:
+                    session_runtime.session_data = {}
+                
                 session_runtime.session_data["last_answer_status"] = "correct"
-                result = {
+                
+                self.db.commit()
+                return {
                     "state": current_state,
                     "progress": current_index / len(states_data),
                     "attempts_left": 3 - session_runtime.attempts,
                     "completed": False,
                     "status": "correct",
                     "explanation_visible": True,
-                    "correct_answer": correct_answers,
-                    "feedback": "Correct! Well done."
-                }
-            elif session_runtime.attempts >= 3:
-                session_runtime.session_data["last_answer_status"] = "reveal_answer"
-                result = {
-                    "state": current_state,
-                    "progress": current_index / len(states_data),
-                    "attempts_left": 0,
-                    "completed": False,
-                    "status": "reveal_answer",
-                    "explanation_visible": True,
-                    "correct_answer": correct_answers,
-                    "feedback": f"The correct answer is: {correct_answers}"
+                    "correct_answer": int(correct_answers[0]) if correct_answers else None,
+                    "feedback": "Correct!"
                 }
             else:
-                session_runtime.session_data["last_answer_status"] = "incorrect"
-                result = {
-                    "state": current_state,
-                    "progress": current_index / len(states_data),
-                    "attempts_left": 3 - session_runtime.attempts,
-                    "completed": False,
-                    "status": "retry",
-                    "explanation_visible": False,
-                    "feedback": "Incorrect. Try again."
-                }
-            
-            session_runtime.last_active_at = datetime.utcnow()
-            self.db.commit()
-            return result
-        
+                # Wrong answer - increment attempts
+                session_runtime.attempts += 1
+                session_runtime.last_active_at = datetime.utcnow()
+                
+                attempts_left = 3 - session_runtime.attempts
+                logger.info(f" [ANSWER DEBUG] Attempts left: {attempts_left}")
+                
+                if attempts_left > 0:
+                    # Return retry response
+                    self.db.commit()
+                    return {
+                        "state": current_state,
+                        "progress": current_index / len(states_data),
+                        "attempts_left": attempts_left,
+                        "completed": False,
+                        "status": "retry",
+                        "explanation_visible": False,
+                        "feedback": "Oops, try again"
+                    }
+                else:
+                    # No attempts left - reveal answer and allow next
+                    # Store status in session data for next action validation
+                    if not session_runtime.session_data:
+                        session_runtime.session_data = {}
+                    
+                    session_runtime.session_data["last_answer_status"] = "reveal_answer"
+                    
+                    self.db.commit()
+                    return {
+                        "state": current_state,
+                        "progress": current_index / len(states_data),
+                        "attempts_left": 0,
+                        "completed": False,
+                        "status": "reveal_answer",
+                        "explanation_visible": True,
+                        "correct_answer": int(correct_answers[0]) if correct_answers else None,
+                        "feedback": "No attempts left",
+                        "hint_available": True,
+                        "skip_available": True
+                    }
         elif action_type == "hint":
             # Handle hint request
             if current_state.get("type") != "question":
@@ -321,6 +474,8 @@ class LessonRuntimeService:
             
             # Generate meaningful contextual hint
             try:
+                import json
+                
                 # Get lesson context for better hint generation
                 lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
                 
@@ -358,7 +513,6 @@ class LessonRuntimeService:
                 "explanation_visible": False,
                 "feedback": hint
             }
-        
         elif action_type == "skip":
             # Handle skip request
             if current_state.get("type") != "question":
@@ -374,7 +528,6 @@ class LessonRuntimeService:
             session_runtime.last_active_at = datetime.utcnow()
             
             self.db.commit()
-        
         else:
             raise ValueError(f"Unknown action type: {action_type}")
         
@@ -411,7 +564,7 @@ class LessonRuntimeService:
         result = {
             "state": next_state,
             "progress": session_runtime.current_index / len(states_data),
-            "attempts_left": 3,
+            "attempts_left": 3 - session_runtime.attempts,
             "completed": False,
             "explanation_visible": False,
             "status": "content"
@@ -424,54 +577,46 @@ class LessonRuntimeService:
         try:
             # Get session runtime
             session_runtime = self.db.query(LessonSessionRuntimeDB).filter(
-                LessonSessionRuntimeDB.id == session_id
+                LessonSessionRuntimeDB.session_id == session_id,
+                LessonSessionRuntimeDB.user_id == user_id
             ).first()
             
             if not session_runtime:
-                raise ValueError(f"Session {session_id} not found")
+                return {}
             
-            if session_runtime.user_id != user_id:
-                raise ValueError("Unauthorized access to session")
-            
-            # Get lesson data
+            # get lesson states
             lesson = self.db.query(LessonDB).filter(LessonDB.id == session_runtime.lesson_id).first()
             if not lesson:
-                raise ValueError(f"Lesson {session_runtime.lesson_id} not found")
+                return {}
             
-            # Parse lesson states
-            try:
-                states_data = json.loads(lesson.states)
-            except json.JSONDecodeError:
-                raise ValueError(f"Invalid lesson states data for lesson {session_runtime.lesson_id}")
-            
-            # Get current state
+            states_data = lesson.states
             current_index = session_runtime.current_index
+            
             if current_index >= len(states_data):
-                return {
-                    "state": None,
-                    "progress": 1.0,
-                    "attempts_left": 0,
-                    "completed": True,
-                    "status": "completed"
-                }
+                return {"completed": True}
             
             current_state = states_data[current_index]
             
-            return {
-                "state": current_state,
-                "progress": current_index / len(states_data),
-                "attempts_left": 3 - session_runtime.attempts,
-                "completed": False,
-                "status": None
-            }
-            
+            # determine status based on attempts and state type
+            if current_state.get("type") == "question":
+                if session_runtime.attempts == 0:
+                    return {"status": "pending"}
+                elif session_runtime.attempts < 3:
+                    return {"status": "retry"}
+                else:
+                    return {"status": "reveal_answer"}
+            else:
+                return {"status": "content"}
+                
         except Exception as e:
-            logger.error(f"Error getting session state: {e}")
-            raise
+            logger.error(f"Error getting current session state: {e}")
+            return {}
     
-    def _log_analytics_event(self, session_id: str, lesson_id: int, user_id: int, state_index: int, event_type: str, payload: dict):
-        """Log analytics event for the session"""
+    def _log_analytics_event(self, session_id: str, lesson_id: int, user_id: int, 
+                           state_index: int, event_type: str, payload: Dict[str, Any]):
+        """log analytics event for session actions"""
         try:
+            import json
             import uuid
             
             analytics_event = AnalyticsEventDB(

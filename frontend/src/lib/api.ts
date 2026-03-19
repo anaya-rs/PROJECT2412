@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://127.0.0.1:5005/api';
+const API_BASE_URL = '/api';
 
 export interface Lesson {
   id: number;
@@ -28,11 +28,12 @@ export interface SessionState {
   progress: number;
   attempts_left: number;
   completed: boolean;
-  status?: 'retry' | 'reveal_answer' | 'success' | 'correct';
+  status?: 'retry' | 'reveal_answer' | 'success' | 'correct' | 'hint_revealed' | 'skipped';
   message?: string;
   correct_answer?: string | number;
   explanation_visible?: boolean;
   allow_next?: boolean;
+  feedback?: string;
 }
 
 export interface SessionResponse {
@@ -176,6 +177,14 @@ class ApiService {
 
   async submitNext(sessionId: string, payload?: any): Promise<ActionResult> {
     return this.post<ActionResult>(`/sessions/${sessionId}/next`, payload || {});
+  }
+
+  async getHint(sessionId: string): Promise<ActionResult> {
+    return this.post<ActionResult>(`/sessions/${sessionId}/hint`, {});
+  }
+
+  async skipQuestion(sessionId: string): Promise<ActionResult> {
+    return this.post<ActionResult>(`/sessions/${sessionId}/skip`, {});
   }
 
   // AI endpoints

@@ -96,6 +96,114 @@ async def submit_answer(
         raise HTTPException(status_code=500, detail=CommonErrors.internal_error(str(e)).model_dump())
 
 
+@router.post("/{session_id}/hint")
+async def get_hint(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(verify_authorization)
+) -> Dict[str, Any]:
+    """get a hint for the current question"""
+    try:
+        runtime = LessonRuntimeService(db)
+        
+        # Create hint action
+        action = {
+            "type": "hint",
+            "payload": {}
+        }
+        
+        result = runtime.submit_action(session_id, user_id, action)
+        return {
+            "session_id": session_id,
+            "result": result
+        }
+        
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=CommonErrors.session_not_found(session_id).model_dump())
+        elif "unauthorized" in str(e).lower():
+            raise HTTPException(status_code=403, detail=CommonErrors.forbidden(str(e)).model_dump())
+        else:
+            raise HTTPException(status_code=400, detail=CommonErrors.validation_failed(str(e)).model_dump())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=CommonErrors.internal_error(str(e)).model_dump())
+
+
+@router.post("/{session_id}/skip")
+async def skip_question(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(verify_authorization)
+) -> Dict[str, Any]:
+    """skip the current question"""
+    try:
+        runtime = LessonRuntimeService(db)
+        
+        # Create skip action
+        action = {
+            "type": "skip",
+            "payload": {}
+        }
+        
+        result = runtime.submit_action(session_id, user_id, action)
+        return {
+            "session_id": session_id,
+            "result": result
+        }
+        
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=CommonErrors.session_not_found(session_id).model_dump())
+        elif "unauthorized" in str(e).lower():
+            raise HTTPException(status_code=403, detail=CommonErrors.forbidden(str(e)).model_dump())
+        else:
+            raise HTTPException(status_code=400, detail=CommonErrors.validation_failed(str(e)).model_dump())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=CommonErrors.internal_error(str(e)).model_dump())
+
+
+@router.post("/{session_id}/complete")
+async def show_complete_content(
+    session_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(verify_authorization)
+) -> Dict[str, Any]:
+    """show complete content for current state"""
+    try:
+        runtime = LessonRuntimeService(db)
+        
+        # Get current session state to check if content is truncated
+        session_state = runtime.get_session_state(session_id, user_id)
+        current_state = session_state.get("state", {})
+        
+        # Only allow complete content for content states
+        if current_state.get("type") != "content":
+            raise HTTPException(status_code=400, detail="Complete content only available for content states")
+        
+        # Return the content with a flag indicating it was shown fully
+        return {
+            "session_id": session_id,
+            "result": {
+                "state": current_state,
+                "progress": session_state.get("progress", 0),
+                "completed": False,
+                "status": "content_shown",
+                "full_content": True,
+                "feedback": "Complete content shown"
+            }
+        }
+        
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail=CommonErrors.session_not_found(session_id).model_dump())
+        elif "unauthorized" in str(e).lower():
+            raise HTTPException(status_code=403, detail=CommonErrors.forbidden(str(e)).model_dump())
+        else:
+            raise HTTPException(status_code=400, detail=CommonErrors.validation_failed(str(e)).model_dump())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=CommonErrors.internal_error(str(e)).model_dump())
+
+
 @router.post("/{session_id}/next")
 async def next_state(
     session_id: str,

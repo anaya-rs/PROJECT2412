@@ -43,8 +43,8 @@ def init_db():
     from models.job import JobDB
     from models.user import UserDB
     
-    # create all tables first   
-    Base.metadata.create_all(bind=engine)
+    # create all tables first (check if they already exist)
+    Base.metadata.create_all(bind=engine, checkfirst=True)
     
     # create indexes after tables exist
     with engine.connect() as conn:
